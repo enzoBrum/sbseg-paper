@@ -1,0 +1,11 @@
+fig*
+caption2.sty
+*.aux
+*.blg
+*.dvi
+*.fdb_latexmk
+*.log
+*.fls
+*.pdf
+*.gz
+table.jpg
