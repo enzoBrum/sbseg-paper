@@ -38,5 +38,7 @@ members = [
 
 [dependency-groups]
 dev = [
+    "black>=25.9.0",
+    "isort>=7.0.0",
     "pyrefly>=0.39.4",
 ]

@@ -519,6 +519,8 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "black" },
+    { name = "isort" },
     { name = "pyrefly" },
 ]
 
@@ -545,7 +547,11 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pyrefly", specifier = ">=0.39.4" }]
+dev = [
+    { name = "black", specifier = ">=25.9.0" },
+    { name = "isort", specifier = ">=7.0.0" },
+    { name = "pyrefly", specifier = ">=0.39.4" },
+]
 
 [[package]]
 name = "numpy"
