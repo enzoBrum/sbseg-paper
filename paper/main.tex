@@ -1,11 +1,9 @@
-% TODO: digitalsign already warns user.
-
 \documentclass[12pt]{article}
 
 \usepackage{sbc-template}
 \usepackage{graphicx,url}
 \usepackage[utf8]{inputenc}
-\usepackage{subcaption}
+\usepackage{subfigure}
 \usepackage[english]{babel}
 \usepackage{wasysym}
 \usepackage[ruled,vlined]{algorithm2e}
@@ -77,18 +75,9 @@ The remainder of this paper is organized as follows. Section~\ref{sec:background
 
 \begin{figure}[htb]
 	\centering
-	\begin{subfigure}[b]{0.47\linewidth}
-		\centering
-		\includegraphics[width=\linewidth]{Screenshot 2026-05-28 at 23.44.27.png}
-		\caption{Original signed contract.}
-	\end{subfigure}
+	\subfigure[Original signed contract.]{\includegraphics[width=0.47\linewidth]{fig_contract_original.png}}
 	\hfill
-	\begin{subfigure}[b]{0.463\linewidth}
-		\centering
-		%\raisebox{0.6ex}
-		\includegraphics[width=\linewidth]{Screenshot 2026-05-28 at 23.44.42.png}
-		\caption{After attack.}
-	\end{subfigure}
+	\subfigure[After attack.]{\includegraphics[width=0.463\linewidth]{fig_contract_after_attack.png}}
 	\caption{\label{fig:attack-example} Example of a contract in which the contracted value has been altered after signing, while the signature is still reported as valid.}
 \end{figure}
 
@@ -338,8 +327,6 @@ Appending signatures as incremental updates naturally supports multiple signatur
 
 \subsection{Modification Permission Mechanism} \label{sec:doc-mod-perm}
 
-% TODO: read ISO again just to be sure. my curr understanding is that spec does not define incr updates verification and that what readers do isn't required.
-
 Because \texttt{incremental updates} preserve all prior bytes, visual content can be modified after signing without technically invalidating the signature. An attacker could, for example, alter a page or inject an annotation via an incremental update while leaving the signed byte range intact, all within the boundaries of the specification~\cite{iso32000-2}. In response, most verifiers~\cite{adobereader,foxitreader,libreoffice} either treat such post-signing modifications as invalidating the signature or surface a warning to the user.
 
 The specification also provides mechanisms that make signatures sensitive to specific classes of modifications. \texttt{DocMDP} defines which types of modification are permitted before the signature is considered broken; \texttt{FieldMDP} locks specific form fields so that any change to them invalidates the signature; and \texttt{SigFieldLock} can do both capabilities. \texttt{DocMDP} and \texttt{FieldMDP} reside in the signature dictionary, while \texttt{SigFieldLock} is referenced by the signature field itself and its value is copied into \texttt{FieldMDP} at signing time. \texttt{DocMDP} and \texttt{SigFieldLock} share three permission levels: (i) level 1 forbids any modification; (ii) level 2 permits form fill-in and additional signatures; and (iii) level 3 additionally permits annotation creation, modification, and deletion.
@@ -395,14 +382,11 @@ For GUI verifiers, an attack is \emph{successful} when both UI layers are vulner
 
 Our attacks exploits two underspecified aspects of the PDF specification~\cite{iso32000-2} to alter existing signature fields and use them to introduce visual changes. By modifying a signature field's existing entries, an attacker can place arbitrary visual content on a page. Consequently, attacks such as the one shown in Figure~\ref{fig:attack-example} can be carried out without invalidating the signature in affected verifiers.
 
-% TODO: cant use ASA here maybe? pdf-insecurity paper on certification already defines sneaky signature attack
 \subsection{Appearance Substitution Attack (ASA)}
 
 % 1. reexplain /Rect and /AP
 % 2. explain that /Rect can be resized and /AP can be overwritten as to change what's actualy shown on page. -> point to figure with an already signed document with a common stamp -> change it so rect compasses whole page, the stamp is kept and text is changed. show virtual square outline so people see it
 % 3. argument the spec is flawed, provide exact wording and say it does NOT necessarily restrict such attack.
-
-% TODO: fact check invisible signatures.
 
 As described in Section~\ref{sec:sig-field}, a signature field's \texttt{/Rect} entry defines the region of the page occupied by the field, while its \texttt{/AP} entry defines the appearance drawn inside that region. For signatures with a visible component, \texttt{/Rect} typically identifies a small area of the page containing the signer's name or stamp, and \texttt{/AP} stores the corresponding visual representation. For signatures without a visible component, \texttt{/Rect} commonly contains a zero-area rectangle, and \texttt{/AP} is absent.
 
@@ -488,8 +472,6 @@ The PDF specification does not prohibit multiple signature fields from referenci
 \end{quote}
 
 
-% TODO: add figure
-% TODO: not exactly true, go back later. (looks true now...)
 The text stops short of disallowing the configuration or prescribing how verifiers should handle it. Affected verifiers resolve the ambiguity by rendering every signature field that references the signature dictionary as valid, the attacker-controlled one included, while still reporting the document as correctly signed.
 
 \begin{figure}[htb]
@@ -553,9 +535,15 @@ The text stops short of disallowing the configuration or prescribing how verifie
 	\caption{SFDA applied to a document containing two valid signatures: (a) visual example of the attack; (b) abstract structural view of the duplicated signature field.\label{fig:sfda-example}}
 \end{figure}
 
+\subsection{Root Cause}
+
+Both passages quoted above overlook how their rules interact with \texttt{incremental updates}. Filling a signature field and referencing a signature dictionary are each defined as a single event, at the moment a form is completed within one static revision. The specification never asks what should happen if a signature field is filled again in a later revision, after it was already filled once, nor what should happen if a second field is created in a later revision and pointed at a signature dictionary already established in an earlier one. ASA exploits the first gap and SFDA the second. In neither case did the specification make an explicit choice that turned out to be wrong; the questions were simply never asked. The complexity that incremental updates introduce around signature verification is a recurring contributor to the problems discussed throughout this paper and in prior work. 
+
 \subsection{Limitations}
 
-ASA can only modify an existing signature field, and is therefore constrained by the page it is presented. Documents that place signature fields on a dedicated signature page consequently offer a smaller attack surface than documents where signature fields appear alongside important content. SFDA is not bound by this same placement constraint, but it introduces a duplicated signature field that remains visible within UI-layer~2.
+ASA can only modify an existing signature field, and is therefore constrained by the page it is presented. Documents that place signature fields on a dedicated signature page consequently offer a smaller attack surface than documents where signature fields appear alongside important content. SFDA is not bound by this same placement constraint, but it introduces a duplicated signature field that remains visible within UI-layer~2, so an attentive user could detect it.
+
+Both attacks also depend on how tolerant a verifier is of post-signing modification, and on the permission configuration chosen when the document was signed. Some verifiers reject both attacks outright by treating any post-signing change, including benign ones, as invalidating, while others only reject them once a protection mechanism is explicitly configured, or once the modified or duplicated field is moved to a different page (Section~\ref{sec:evaluation}).
 
 Given both attacks abuse visual components of interactive fields, their rendering can vary across PDF readers. Some readers may highlight the field, make it clickable, or prevent text selection inside it. These artifacts can make the attack detectable by an attentive user, but prior work shows that users may still perform security-sensitive actions, such as entering their own credentials, when the inconsistencies are small~\cite{phishing-password-managers}. Similarly, in our setting, users may interpret these artifacts as quirks of the reader or verifier, especially when all signatures are reported as valid. This is also similar to prior attacks on PDF signatures, where the abused functionality left subtle visual inconsistencies~\cite{pdf-certification-attack}.
 
@@ -586,6 +574,8 @@ To generate test cases, we enumerate all combinations of the following parameter
 
 For library verifiers, each test case is submitted through the relevant verification function and the returned veredict and modification warnings are stored directly, populating the API-Layer from the layered model. For GUI desktop verifiers, the tester follows the screenshot-based approach of previous works~\cite{pdf-certification-attack}: it opens the document in the verifier, captures one screenshot per UI layer being evaluated, and classifies each by template matching against a small reference-image set per verifier and layer, one set per outcome class (\emph{valid}, \emph{warn}, \emph{invalid}). The \emph{warn} class captures the partial-vulnerability case of Section~\ref{sec:winning-conditions}, in which the verifier accepts the signature but raises a warning that the document was modified after signing.
 
+The self-issued certificate used to produce trusted signatures for the automated tester uses a 2048-bit RSA key and a SHA-256 signature. For web verifiers, whose accepted certificate chains cannot be extended by an outside party, we instead used arbitrary documents already carrying a signature issued by a CA the verifier already trusts. The template-matching classifier described above accepts a match once the normalized cross-correlation coefficient between a screenshot and a reference image reaches at least 0.95. Because each attack is tested against 112 configurations per verifier, Table~\ref{tab:results} reports a single summary veredict per verifier and attack, chosen by picking the configuration protected by the most restrictive DocMDP or SigFieldLock level for which the automated classification is still \emph{vulnerable}, falling back to the most restrictive configuration classified \emph{partially vulnerable}, and to \emph{secure} if neither exists. We manually inspected the screenshot of this selected configuration for every verifier and attack and confirmed it matches the automated veredict.
+
 \section{Evaluation} \label{sec:evaluation}
 
 \begin{table}[htb]
@@ -606,7 +596,7 @@ For library verifiers, each test case is submitted through the relevant verifica
 		DSS Demo WebApp                                             & 6.4              & web               & \LEFTcircle\hspace{4pt}\Circle & \LEFTcircle\hspace{4pt}\Circle &                            \\
 		ITI Validador                                               & 6aec769          & web               & \CIRCLE\hspace{4pt}\Circle     & \CIRCLE\hspace{4pt}\Circle     &                            \\
 		Certisign                                                   &                  & web               & \CIRCLE\hspace{4pt}\CIRCLE     & \CIRCLE\hspace{4pt}\CIRCLE     &                            \\
-		DigitalSign                                                 &                  & web               & \CIRCLE\hspace{4pt}\Circle     & \CIRCLE\hspace{4pt}\Circle     &                            \\
+		DigitalSign                                                 &                  & web               & \LEFTcircle\hspace{4pt}\Circle & \LEFTcircle\hspace{4pt}\Circle &                            \\
 		DVV                                                         &                  & web               & \LEFTcircle\hspace{4pt}\Circle & \LEFTcircle\hspace{4pt}\Circle &                            \\
 		BRY Verifica                                                &                  & web               & \CIRCLE\hspace{4pt}\LEFTcircle & \CIRCLE\hspace{4pt}\LEFTcircle &                            \\
 		ZapSign                                                     &                  & web               & \Circle\hspace{4pt}\Circle     & \Circle\hspace{4pt}\Circle     &                            \\
@@ -622,10 +612,11 @@ For library verifiers, each test case is submitted through the relevant verifica
 	\label{tab:results}
 \end{table}
 
+All results in Table~\ref{tab:results} are tied to the specific software versions listed and reflect the state of each verifier at the time of testing. Vendors may patch the underlying issue in later releases, particularly following the disclosure notifications described in Section~\ref{sec:ethics}. We therefore treat these results as a snapshot rather than a permanent characterization of each product.
 
 Our evaluation covers 8 web-based, 4 desktop, and 2 library verifiers. Desktop and library verifiers, which support automation, were each evaluated against 112 crafted PDF documents; web verifiers were evaluated manually with a single document carrying a signature trusted by each verifier. Desktop tests ran on Windows 11, web tests on Windows 11 with Microsoft Edge, and library tests on NixOS 26. Signatures for the automated tests were produced by a custom pyHanko script using a self-issued certificate. The results of the evaluation can be seen at Table~\ref{tab:results}.
 
-We first analyze how ASA performs against the evaluated verifiers. As Table~\ref{tab:results} shows, the large majority of verifiers are vulnerable to ASA at \textbf{UI-Layer~1} or the \textbf{API-Layer}, the layers users rely on to judge whether a signature is valid. With the sole exception of Foxit, every GUI verifier vulnerable to ASA at \textbf{UI-Layer~1} is also vulnerable at \textbf{UI-Layer~2}, so the detail panel rarely catches the attack even when the user opens it. By the criteria of Section~\ref{sec:winning-conditions}, this yields 8 \emph{successful} attacks and 4 \emph{partially successful} ones.
+We first analyze how ASA performs against the evaluated verifiers. As Table~\ref{tab:results} shows, the large majority of verifiers are vulnerable to ASA at \textbf{UI-Layer~1} or the \textbf{API-Layer}, the layers users rely on to judge whether a signature is valid. With the sole exception of Foxit, every GUI verifier vulnerable to ASA at \textbf{UI-Layer~1} is also vulnerable at \textbf{UI-Layer~2}, so the detail panel rarely catches the attack even when the user opens it. By the criteria of Section~\ref{sec:winning-conditions}, this yields 7 \emph{successful} attacks and 5 \emph{partially successful} ones.
 
 We then analyze how SFDA performs against the evaluated verifiers. SFDA reaches slightly fewer verifiers than ASA, with exactly half of the GUI and library verifiers reporting the signature as valid in some form at \textbf{UI-Layer~1} or the \textbf{API-Layer}. As with ASA, Foxit is the only GUI verifier whose veredict downgrades between UI layers, going from fully vulnerable at \textbf{UI-Layer~1} to \emph{secure} at \textbf{UI-Layer~2}. Overall, SFDA yields 6 \emph{successful} attacks and 2 \emph{partially successful} ones.
 
@@ -662,18 +653,37 @@ ASA differs from these attacks in how it works and in what it asks of the attack
 
 SFDA also works only on already-signed PDFs and follows the spec. The closest match is SSA, since both add a new signature field that the verifier shows as valid. The difference is that SSA brings its own signature dictionary, which forces the attacker to get a trusted certificate. SFDA points the new field at a signature dictionary already present in the document, so no extra certificate is needed. This widens the threat to settings where a trusted certificate is hard to get, such as documents signed under closed PKIs. The duplicated field also shows up under the original signer's name and certificate chain, which makes the forgery harder to dismiss than the unfamiliar identity that SSA produces.
 
+Table~\ref{tab:comparison-matrix} summarizes the attacks discussed above along the dimensions that separate them.
+
+\begin{table}[htb]
+	\centering
+	\footnotesize
+	\begin{tabular}{@{}l c c c l@{}}
+		\hline
+		\textbf{Attack}                       & \textbf{Spec-comp.?} & \textbf{Pre-sign?} & \textbf{Own cert.?} & \textbf{Targets}                          \\
+		\hline
+		USF~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & Signature dictionary                      \\
+		ISA~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & Xref table / trailer                      \\
+		SWA~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & Signed byte range                         \\
+		Shadow~\cite{shadow-attacks}          & Yes                  & Yes                & No                  & Hidden content                            \\
+		EAA~\cite{pdf-certification-attack}   & Yes                  & No                 & No                  & Annotations                               \\
+		SSA~\cite{pdf-certification-attack}   & Yes                  & No                 & Yes                 & New signature field                       \\
+		\textbf{ASA (ours)}                   & Yes                  & No                 & No                  & Sig. field (\texttt{/AP}, \texttt{/Rect}) \\
+		\textbf{SFDA (ours)}                  & Yes                  & No                 & No                  & Sig. field duplication                    \\
+		\hline
+	\end{tabular}
+	\caption{Comparison of PDF signature-forgery attacks. \emph{Spec-compliant} means the resulting PDF conforms to the structural requirements of ISO~32000-2 (well-formed xref table and trailer, valid signature-dictionary entries, correct file termination); an attack marked \emph{No} requires violating at least one such requirement to succeed. USF, ISA, SWA, Shadow, EAA, and SSA were disclosed years ago and have since been addressed by affected vendors while ASA and SFDA were confirmed against the current verifier versions listed in Table~\ref{tab:results}.}
+	\label{tab:comparison-matrix}
+\end{table}
+
 
 \section{Ethical Considerations and Responsible Disclosure} \label{sec:ethics}
 
-This paper demonstrates practical attacks against 14 signature verifiers, several of which are commercial products in wide use, including government facing and enterprise services. We disclose our findings through a coordinated process intended to reduce the exposure of users of the affected products while this research is made available to the community.
+This paper demonstrates practical attacks against 14 signature verifiers, several of which are commercial products in wide use. We follow a coordinated disclosure process to notify affected vendors before these findings are made public.
 
-We have notified the vendor or maintainer of every verifier found vulnerable or partially vulnerable to ASA or SFDA under the criteria of Section~\ref{sec:winning-conditions}, and we are working with each of them toward a fix. Vendors for which we could not identify a direct contact were notified through the security or disclosure channel published on their website.
+We have notified the vendor or maintainer of every verifier found vulnerable or partially vulnerable to ASA or SFDA under the criteria of Section~\ref{sec:winning-conditions}, and are working with each toward a fix. We follow a 30-day disclosure window per vendor, counted from the date of notification. Because not every vendor has shipped a fix as of this submission, we cannot yet publish a complete table of dates; we will publish the affected verifiers and their fixed versions at \url{TODO} once every vendor has fixed the issue or reached the end of its window, or otherwise in an updated version of this paper before final publication. % TODO: fill in artifact/tracking URL before camera-ready
 
-We follow a 90 day disclosure window per vendor, counted from the date that vendor was notified. A vendor that ships a fix before its window closes may request earlier disclosure. A vendor that has not responded by the time its window closes is disclosed regardless. Because not every vendor had shipped a fix by the time of this submission, we cannot yet publish a complete table of notification and disclosure dates for each vendor. We will publish the full list of affected verifiers and their fixed versions at \url{TODO} once every vendor has either shipped a fix or reached the end of its window, or, failing that, in an updated version of this paper before final publication. % TODO: fill in artifact/tracking URL before camera-ready
-
-Consistent with this process, we distinguish what we release now from what we withhold. The test-case generation framework and the detection tool described in Section~\ref{sec:methodology} and Section~\ref{sec:countermeasures} are released as part of the SBSeg artifact submission, since neither tool signs or forges a document by itself. The code that assembles a concrete ASA or SFDA attack chain, along with the malicious PDF files produced during our evaluation, is withheld until the verifier it targets has shipped a fix or its disclosure window has closed.
-
-We recognize that withholding these artifacts limits how directly other researchers can reproduce our results while some verifiers remain unpatched. We consider this an acceptable cost, since the released framework still lets a researcher regenerate equivalent test cases once their own trust anchors and target verifiers are ready, and publishing ready to use exploits for vulnerabilities that are not yet fixed would place users of the affected products at unnecessary risk.
+We release the detection tool of Section~\ref{sec:countermeasures} in full, and a simplified version of the test-case generation framework of Section~\ref{sec:methodology} that omits the code assembling a concrete attack chain, as part of the SBSeg artifact submission. We withhold the full generation framework and the malicious PDFs produced during our evaluation until the targeted verifier has been fixed or its disclosure window has closed. This limits how directly other researchers can reproduce our results, a cost we accept given the simplified framework still documents our methodology, and publishing ready-to-use exploits for unfixed vulnerabilities would put users of the affected products at unnecessary risk.
 
 
 \section{Conclusion} \label{sec:conclusion}
