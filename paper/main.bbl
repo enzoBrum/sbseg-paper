@@ -14,7 +14,8 @@
 \bibitem[Anliker et~al. 2025]{phishing-password-managers}
 Anliker, C., Lain, D., and \v{C}apkun, S. (2025).
 \newblock Phishing attacks against password manager browser extensions.
-\newblock In {\em Proceedings of the 34th USENIX Conference on Security Symposium}, SEC '25, USA. USENIX Association.
+\newblock In {\em Proceedings of the 34th USENIX Conference on Security
+  Symposium}, SEC '25, USA. USENIX Association.
 
 \bibitem[{Brazil} 2020]{lei14063}
 {Brazil} (2020).
@@ -26,10 +27,17 @@ Anliker, C., Lain, D., and \v{C}apkun, S. (2025).
 \newblock \url{https://verifica.bry.com.br/}.
 \newblock Accessed on 2026-05-24.
 
+\bibitem[{CenturySign} 2026]{centurysign}
+{CenturySign} (2026).
+\newblock {CenturySign}.
+\newblock \url{https://centurysign.dev}.
+\newblock Accessed on 2026-08-03.
+
 \bibitem[{Certisign} 2026]{certisign}
 {Certisign} (2026).
 \newblock Certisign {Verificador} de {Assinaturas}.
-\newblock \url{ https://assinaturas.certisign.com.br/VerificadorAssinaturas/Verificador }.
+\newblock \url{
+  https://assinaturas.certisign.com.br/VerificadorAssinaturas/Verificador }.
 \newblock Accessed on 2026-05-24.
 
 \bibitem[{Clicksign} 2026]{clicksign}
@@ -47,7 +55,8 @@ Anliker, C., Lain, D., and \v{C}apkun, S. (2025).
 \bibitem[{DigitalSign} 2026]{digitalsign}
 {DigitalSign} (2026).
 \newblock {DigitalSign Signatures Validator}.
-\newblock \url{ https://verify.digitalsign.pt/signaturesValidator/validator/validation }.
+\newblock \url{
+  https://verify.digitalsign.pt/signaturesValidator/validator/validation }.
 \newblock Accessed on 2026-05-24.
 
 \bibitem[{DPDSA} 2026]{dvv}
@@ -70,7 +79,8 @@ Anliker, C., Lain, D., and \v{C}apkun, S. (2025).
 \bibitem[{European Commission} 2026b]{dssdemo}
 {European Commission} (2026b).
 \newblock {DSS Demonstration WebApp}: {Signature Validation}.
-\newblock \url{ https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/validation }.
+\newblock \url{
+  https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/validation }.
 \newblock Accessed on 2026-05-24.
 
 \bibitem[{Foxit Software Inc.} 2026]{foxitreader}
@@ -81,8 +91,10 @@ Anliker, C., Lain, D., and \v{C}apkun, S. (2025).
 
 \bibitem[{ISO} 2020]{iso32000-2}
 {ISO} (2020).
-\newblock {Document management --- Portable document format --- Part 2: PDF 2.0 }.
-\newblock Standard ISO 32000-2:2020, International Organization for Standardization, Geneva, Switzerland.
+\newblock {Document management --- Portable document format --- Part 2: PDF 2.0
+  }.
+\newblock Standard ISO 32000-2:2020, International Organization for
+  Standardization, Geneva, Switzerland.
 
 \bibitem[{ITI} 2026]{itivalidador}
 {ITI} (2026).
@@ -93,7 +105,8 @@ Anliker, C., Lain, D., and \v{C}apkun, S. (2025).
 \bibitem[Mainka et~al. 2021]{shadow-attacks}
 Mainka, C., Mladenov, V., and Rohlmann, S. (2021).
 \newblock Shadow attacks: Hiding and replacing content in signed pdfs.
-\newblock In {\em Proceedings of the Network and Distributed System Security Symposium (NDSS)}.
+\newblock In {\em Proceedings of the Network and Distributed System Security
+  Symposium (NDSS)}.
 
 \bibitem[{Microsoft Corporation} 2026]{microsoftedge}
 {Microsoft Corporation} (2026).
@@ -102,24 +115,45 @@ Mainka, C., Mladenov, V., and Rohlmann, S. (2021).
 \newblock Accessed on 2026-05-24.
 
 \bibitem[Mladenov et~al. 2019]{one-trillion-dollar-refund}
-Mladenov, V., Mainka, C., Meyer~zu Selhausen, K., Grothe, M., and Schwenk, J. (2019).
+Mladenov, V., Mainka, C., Meyer~zu Selhausen, K., Grothe, M., and Schwenk, J.
+  (2019).
 \newblock 1 trillion dollar refund: How to spoof pdf signatures.
-\newblock In {\em Proceedings of the 2019 ACM SIGSAC Conference on Computer and Communications Security}, CCS '19, page 1–14, New York, NY, USA. Association for Computing Machinery.
+\newblock In {\em Proceedings of the 2019 ACM SIGSAC Conference on Computer and
+  Communications Security}, CCS '19, page 1–14, New York, NY, USA.
+  Association for Computing Machinery.
 
 \bibitem[M\"{u}ller et~al. 2019]{practical-decryption-exfiltration}
-M\"{u}ller, J., Ising, F., Mladenov, V., Mainka, C., Schinzel, S., and Schwenk, J. (2019).
+M\"{u}ller, J., Ising, F., Mladenov, V., Mainka, C., Schinzel, S., and Schwenk,
+  J. (2019).
 \newblock Practical decryption exfiltration: Breaking pdf encryption.
-\newblock In {\em Proceedings of the 2019 ACM SIGSAC Conference on Computer and Communications Security}, CCS '19, page 15–29, New York, NY, USA. Association for Computing Machinery.
+\newblock In {\em Proceedings of the 2019 ACM SIGSAC Conference on Computer and
+  Communications Security}, CCS '19, page 15–29, New York, NY, USA.
+  Association for Computing Machinery.
 
 \bibitem[Müller et~al. 2021]{processing-dangerous-paths}
 Müller, J., Noss, D., Mainka, C., Mladenov, V., and Schwenk, J. (2021).
-\newblock Processing dangerous paths: On security and privacy of the portable document format.
-\newblock In {\em Proceedings of the Network and Distributed System Security Symposium (NDSS)}.
+\newblock Processing dangerous paths: On security and privacy of the portable
+  document format.
+\newblock In {\em Proceedings of the Network and Distributed System Security
+  Symposium (NDSS)}.
+
+\bibitem[{ON-RCPN} 2026]{onrcpn}
+{ON-RCPN} (2026).
+\newblock {ON-RCPN}.
+\newblock \url{https://signature.registrocivil.org.br/api/verifier/pdf/verify}.
+\newblock Accessed on 2026-08-03.
+
+\bibitem[{Rede Nacional de Ensino e Pesquisa (RNP)} 2026]{rnp}
+{Rede Nacional de Ensino e Pesquisa (RNP)} (2026).
+\newblock {RNP} verificador de assinaturas.
+\newblock \url{https://verificador.rnp.br/home}.
+\newblock Accessed on 2026-08-03.
 
 \bibitem[Rohlmann et~al. 2021]{pdf-certification-attack}
 Rohlmann, S., Mladenov, V., Mainka, C., and Schwenk, J. (2021).
 \newblock Breaking the specification: Pdf certification.
-\newblock In {\em 2021 IEEE Symposium on Security and Privacy (SP)}, pages 1485--1501.
+\newblock In {\em 2021 IEEE Symposium on Security and Privacy (SP)}, pages
+  1485--1501.
 
 \bibitem[{The Document Foundation} 2026]{libreoffice}
 {The Document Foundation} (2026).

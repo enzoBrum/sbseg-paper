@@ -36,7 +36,7 @@
 
 \title{\$1 Yacht Sale: Tampering with Signed PDFs in Plain Sight}
 
-\author{Enzo R. Brum\inst{1}, Frederico Schardong\inst{2}, Ricardo Custódio\inst{1}}
+\author{Enzo R. Brum\inst{1}, Frederico Schardong\inst{1}, Ricardo Custódio\inst{1}}
 
 
 \address{Laboratório de Segurança em Computação (LabSEC) -- Departamento\\
@@ -52,7 +52,7 @@ ricardo.custodio@ufsc.br}
 \maketitle
 
 \begin{abstract}
-	The Portable Document Format (PDF) is a popular way of sharing electronic documents. It is a format used across fields to represent official documents, many of which require strong guarantees that no unauthorized modifications are made to their contents. Digital signatures can be used to protect both the integrity and authenticity of a document, allowing an entity, whether a person, business, or service, to testify to one specific state of the document such that any non-permitted modification, for example altering the value of a contract or a health prescription, invalidates the signature. In this paper we introduce two novel attack classes that abuse flaws in the PDF specification to visually modify a page of a signed document without invalidating the signature or warning the user: Appearance Substitution Attack (ASA) and Signature Field Duplication Attack (SFDA). While previous works already explored incremental updates, we tap into modifications to the signature field itself, a specific kind of update that has yet to be fully explored. Our evaluation found that 8 out of 12 tested GUI applications and 2 popular verification libraries were vulnerable to at least one of the attack classes. We also propose countermeasures and specification improvements for fixing both.
+	The Portable Document Format (PDF) is a popular way of sharing electronic documents. It is a format used across fields to represent official documents, many of which require strong guarantees that no unauthorized modifications are made to their contents. Digital signatures can be used to protect both the integrity and authenticity of a document, allowing an entity, whether a person, business, or service, to testify to one specific state of the document such that any non-permitted modification, for example altering the value of a contract or a health prescription, invalidates the signature. In this paper we introduce two novel attack classes that abuse flaws in the PDF specification to visually modify a page of a signed document without invalidating the signature or warning the user: Appearance Substitution Attack (ASA) and Signature Field Duplication Attack (SFDA). While previous works already explored incremental updates, we tap into modifications to the signature field itself, a specific kind of update that has yet to be fully explored. Our evaluation found that 12 out of 15 tested GUI applications and 2 popular verification libraries were at least partially vulnerable to one of the attack classes. We also propose countermeasures and specification improvements for fixing both.
 
 
 \end{abstract}
@@ -68,7 +68,7 @@ PDF signatures, however, are not unbreakable~\cite{one-trillion-dollar-refund,sh
 
 As in prior work, we target \texttt{incremental updates}. Existing attacks have either abused verifier flaws to hide changes introduced through such updates~\cite{one-trillion-dollar-refund}, required attacker access to the document before signing~\cite{shadow-attacks}, or exploited specific permission levels of modification-control mechanisms~\cite{pdf-certification-attack}. Both ASA and SFDA, instead, target the \texttt{signature field} itself. While ASA directly modifies an existing signature field, the SFDA duplicates one while placing attacker-controlled visual content on any page of the document. Although prior work~\cite{pdf-certification-attack} flagged the combination of \texttt{incremental updates} and signature fields as dangerous, the potential of that combination had not been fully explored.
 
-The contributions of this paper are three fold: (i) we tested 12 GUI applications and 2 popular programming libraries, finding 10 of the 14 to be vulnerable to at least one of the two attacks; (ii) we propose countermeasures at the specification, verifier, and tooling levels; and (iii) release an open-source tool that detects both attacks in a given PDF.
+The contributions of this paper are three fold: (i) we tested 15 GUI applications and 2 popular programming libraries, finding 14 of the 17 to be at least partially vulnerable to of the two attacks; (ii) we propose countermeasures at the specification, verifier, and tooling levels; and (iii) release an open-source tool that detects both attacks in a given PDF.
 %
 The remainder of this paper is organized as follows. Section~\ref{sec:background} introduces the PDF concepts relevant to the attacks, while Section~\ref{sec:threat-model} defines the threat model. Then, Section~\ref{sec:attack-definitions} presents ASA and SFDA in detail, Section~\ref{sec:methodology} describes the testing methodology, and Section~\ref{sec:evaluation} reports our evaluation. Next, Section~\ref{sec:countermeasures} discusses countermeasures, while Section~\ref{sec:related-works} relates the attacks to prior work, Section~\ref{sec:ethics} details our ethical considerations and disclosure process, and finally Section~\ref{sec:conclusion} concludes the paper.
 
@@ -90,24 +90,24 @@ The remainder of this paper is organized as follows. Section~\ref{sec:background
 
 A PDF document consists of four parts: (i) a header declaring the PDF version; (ii) a body containing the document's objects; (iii) a cross-reference (xref) table mapping each object to its byte offset; and (iv) a trailer pointing to both the xref table and the document's root object.
 %
-An object is a number, a string, a name, an array, a dictionary, or a stream. In the body, each object appears either as a \emph{direct value}, written inline at the point of use, or as an \emph{indirect object}, declared with a unique identifier of the form \texttt{N M obj} and referenced from other objects by \texttt{N M R}. In Figure~\ref{fig:pdf-object-tree}, the \texttt{Catalog}, a dictionary, is declared as \texttt{1 0 obj} and references a \texttt{Pages} dictionary (\texttt{2 0 R}), which links to the individual pages of the document, and an \texttt{AcroForm} dictionary (\texttt{3 0 R}), which describes any interactive form fields that users can fill or modify. The \texttt{Catalog} is the entry point of the document, and every other indirect object is reached by following references from it.
+An object is a number, a string, a name, an array, a dictionary, or a stream. In the body, each object appears either as a \emph{direct value}, written inline at the point of use, or as an \emph{indirect object}, declared with a unique identifier of the form \texttt{N M obj} and referenced from other objects by \texttt{N M R}. In Figure~\ref{fig:pdf-structure}(a), the \texttt{Catalog}, a dictionary, is declared as \texttt{1 0 obj} and references a \texttt{Pages} dictionary (\texttt{2 0 R}), which links to the individual pages of the document, and an \texttt{AcroForm} dictionary (\texttt{3 0 R}), which describes any interactive form fields that users can fill or modify. The \texttt{Catalog} is the entry point of the document, and every other indirect object is reached by following references from it.
 
 
 %\begin{noindent}
 \begin{figure}[htb]
 	\centering
-	\begin{Verbatim}[frame=single,fontsize=\scriptsize,xleftmargin=0.05\linewidth,xrightmargin=0.00\linewidth]
-1 0 obj                 % object id 1
-<<                      % start of dictionary
-                        % entries have the form '/key value'
-/Type     /Catalog      % Catalog object
-/Pages    2 0 R         % ref to object 2 (Pages)
-/AcroForm 3 0 R         % ref to object 3 (AcroForm)
->>                      % end of dictionary
+	\begin{minipage}[b]{0.44\linewidth}
+		\centering
+		\begin{Verbatim}[frame=single,fontsize=\scriptsize]
+1 0 obj  % Catalog
+<< /Type /Catalog
+   /Pages    2 0 R
+   /AcroForm 3 0 R >>
 endobj
 
 2 0 obj  % Pages
-<< /Kids [4 0 R]  /Count 1 >>
+<< /Kids [4 0 R]
+   /Count 1 >>
 endobj
 
 3 0 obj  % AcroForm
@@ -115,10 +115,55 @@ endobj
 endobj
 
 4 0 obj  % Page
-<< /Parent 2 0 R  /Annots [6 0 R] >>
+<< /Parent 2 0 R
+   /Annots [6 0 R] >>
 endobj
-	\end{Verbatim}
-	\caption{Skeleton of a PDF object tree.\label{fig:pdf-object-tree}}
+		\end{Verbatim}
+
+		{\footnotesize (a) Skeleton object tree.}
+	\end{minipage}%
+	\hfill
+	\begin{minipage}[b]{0.50\linewidth}
+		\centering
+		\begin{tikzpicture}[
+			font=\scriptsize,
+			dict/.style={draw, rectangle, align=left, inner sep=4pt, minimum width=2.8cm},
+			arr/.style={->, thick, >=stealth},
+		]
+			\node[dict] (acro) {%
+				\begin{tabular}{@{}l@{}}
+					\multicolumn{1}{@{}c@{}}{\textbf{\sffamily AcroForm}}\\
+					\multicolumn{1}{@{}c@{}}{\scriptsize\textbf{\sffamily (3 0 obj)}}\\[2pt]
+					\texttt{\textbf{/Fields [6 0 R]}}
+				\end{tabular}
+			};
+			\node[dict, below=0.55cm of acro] (field) {%
+				\begin{tabular}{@{}l@{}}
+					\multicolumn{1}{@{}c@{}}{\textbf{\sffamily Signature field}}\\
+					\multicolumn{1}{@{}c@{}}{\scriptsize\textbf{\sffamily (6 0 obj)}}\\[2pt]
+					\texttt{/T \ \ \ Sig1}\\
+					\texttt{\textbf{/V \ \ \ 7 0 R}}\\
+					\texttt{/Rect [0 0 10 10]}\\
+					\texttt{/AP \ \ ...}\\
+					\texttt{/SigFieldLock ...}
+				\end{tabular}
+			};
+			\node[dict, below=0.55cm of field] (sigdict) {%
+				\begin{tabular}{@{}l@{}}
+					\multicolumn{1}{@{}c@{}}{\textbf{\sffamily Signature dictionary}}\\
+					\multicolumn{1}{@{}c@{}}{\scriptsize\textbf{\sffamily (7 0 obj)}}\\[2pt]
+					\texttt{/Type \ \ /Sig}\\
+					\texttt{/ByteRange [...]}\\
+					\texttt{/Contents ...}
+				\end{tabular}
+			};
+			\draw[arr] (acro.south)  -- (field.north);
+			\draw[arr] (field.south) -- (sigdict.north);
+		\end{tikzpicture}
+
+		{\footnotesize (b) Signature field (object 6) and its signature dictionary.}
+	\end{minipage}
+	\caption{PDF object structure. (a) A skeleton object tree: the \texttt{Catalog} references the \texttt{Pages} and \texttt{AcroForm} dictionaries, and the signature field (object~6) is reached from both the \texttt{AcroForm}'s \texttt{/Fields} and its page's \texttt{/Annots}. (b) That signature field and the \texttt{signature dictionary} it references through \texttt{/V}.\label{fig:pdf-structure}}
 \end{figure}
 %\end{noindent}
 
@@ -126,116 +171,60 @@ endobj
 % \subsection{Incremental Updates}
 
 When handling updates, a PDF processor can append changes to the end of the file rather than
-overwriting existing content. As shown in Figure~\ref{fig:incremental-update}, modified objects are appended after the \texttt{\%EOF} marker, and a new \texttt{xref} table and \texttt{trailer} are added, creating a new \texttt{revision} of the document.
+overwriting existing content. Modified objects are appended after the \texttt{\%EOF} marker, and a new \texttt{xref} table and \texttt{trailer} are added, creating a new \texttt{revision} of the document.
 %
-The incremental update mechanism preserves the original file content while incorporating updates. Most PDF readers merge all \texttt{revisions} into a unified view, though some (such as Adobe Acrobat Reader~\cite{adobereader}) also expose tools for inspecting each revision individually.
+Most PDF readers merge all \texttt{revisions} into a unified view, though some (such as Adobe Acrobat Reader~\cite{adobereader}) also expose tools for inspecting each revision individually.
 
 
 %\begin{noindent}
-\begin{figure}[htb]
-    \centering
-    \begin{tikzpicture}[
-        box/.style={draw, minimum width=3cm, minimum height=0.6cm, align=center, font=\small},
-        orig/.style={box, fill=blue!10},
-        new/.style={box, fill=orange!30},
-    ]
-        % original revision (left column)
-        \node[orig]                  (h1) {Header};
-        \node[orig, below=0pt of h1] (b1) {Body};
-        \node[orig, below=0pt of b1] (x1) {xref table};
-        \node[orig, below=0pt of x1] (t1) {Trailer};
-        \node[above=4pt of h1, font=\small\bfseries] {Revision 1};
-
-        % updated revision (right column)
-        \node[orig, right=5cm of h1] (h2) {Header};
-        \node[orig, below=0pt of h2]   (b2) {Body};
-        \node[orig, below=0pt of b2]   (x2) {xref table};
-        \node[orig, below=0pt of x2]   (t2) {Trailer};
-        \node[new,  below=0pt of t2]   (bu) {Updated body};
-        \node[new,  below=0pt of bu]   (xu) {New xref table};
-        \node[new,  below=0pt of xu]   (tu) {New trailer};
-        \node[above=4pt of h2, font=\small\bfseries] {Revision 2};
-
-        % arrow between columns, label above
-        \coordinate (la) at ($(h1.east)!0.5!(t1.east)$);
-        \draw[-{Stealth[length=3mm]}, thick, dashed] ($(la)+(0.25,0)$)
-            -- node[sloped, above, font=\small\itshape] {incremental update}
-            ($(xu.west)+(-0.25,0)$);
-    \end{tikzpicture}
-    \caption{Incremental update: the updated objects, a new xref table, and a new trailer are appended after the original revision.\label{fig:incremental-update}}
-\end{figure}
+%\begin{figure}[htb]
+   % \centering
+   % \begin{tikzpicture}[
+   %     box/.style={draw, minimum width=3cm, minimum height=0.6cm, align=center, font=\small},
+   %     orig/.style={box, fill=blue!10},
+   %     new/.style={box, fill=orange!30},
+   % ]
+   %     % original revision (left column)
+   %     \node[orig]                  (h1) {Header};
+   %     \node[orig, below=0pt of h1] (b1) {Body};
+   %     \node[orig, below=0pt of b1] (x1) {xref table};
+   %     \node[orig, below=0pt of x1] (t1) {Trailer};
+   %     \node[above=4pt of h1, font=\small\bfseries] {Revision 1};
+%
+%        % updated revision (right column)
+%        \node[orig, right=5cm of h1] (h2) {Header};
+%        \node[orig, below=0pt of h2]   (b2) {Body};
+%        \node[orig, below=0pt of b2]   (x2) {xref table};
+%        \node[orig, below=0pt of x2]   (t2) {Trailer};
+%        \node[new,  below=0pt of t2]   (bu) {Updated body};
+%        \node[new,  below=0pt of bu]   (xu) {New xref table};
+%        \node[new,  below=0pt of xu]   (tu) {New trailer};
+%        \node[above=4pt of h2, font=\small\bfseries] {Revision 2};
+%
+%        % arrow between columns, label above
+%        \coordinate (la) at ($(h1.east)!0.5!(t1.east)$);
+%        \draw[-{Stealth[length=3mm]}, thick, dashed] ($(la)+(0.25,0)$)
+%            -- node[sloped, above, font=\small\itshape] {incremental update}
+%            ($(xu.west)+(-0.25,0)$);
+%    \end{tikzpicture}
+%    \caption{Incremental update: the updated objects, a new xref table, and a new trailer are appended after the original revision.\label{fig:incremental-update}}
+%\end{figure}
 %\end{noindent}
 
 
 \subsection{Signature Field} \label{sec:sig-field}
 
-A \texttt{signature field} is a specialized form field that acts as a container for a PDF digital signature. Each \texttt{signature field} is registered in the document's \texttt{AcroForm} dictionary via the \texttt{/Fields} entry and is associated with a single page. Its most relevant attributes are (i) \texttt{/T}, a name uniquely identifying the field within the document; (ii) \texttt{/V}, the reference to the \texttt{signature dictionary} that defines the digital signature itself; (iii) \texttt{/AP}, which defines the field's visual appearance; (iv) \texttt{/Rect}, which specifies the field's position and dimensions on the page; and (v) \texttt{/SigFieldLock}, which controls field-level modification permissions (Section~\ref{sec:doc-mod-perm}). Figure~\ref{fig:sig-field-structure} illustrates this structure.
+A \texttt{signature field} is a specialized form field that acts as a container for a PDF digital signature. Each \texttt{signature field} is registered in the document's \texttt{AcroForm} dictionary via the \texttt{/Fields} entry and is associated with a single page. Its most relevant attributes are (i) \texttt{/T}, a name uniquely identifying the field within the document; (ii) \texttt{/V}, the reference to the \texttt{signature dictionary} that defines the digital signature itself; (iii) \texttt{/AP}, which defines the field's visual appearance; (iv) \texttt{/Rect}, which specifies the field's position and dimensions on the page; and (v) \texttt{/SigFieldLock}, which controls field-level modification permissions (Section~\ref{sec:doc-mod-perm}). Figure~\ref{fig:pdf-structure}(b) illustrates this structure.
 
 The PDF specification calls \emph{filling} the operation that supplies input to a form field. For a signature field, filling means updating at least the \texttt{/V} entry by attaching a new \texttt{signature dictionary}, but it can also mean more.
 
-%\begin{noindent}
-\begin{figure}[htb]
-    \centering
-    \resizebox{\linewidth}{!}{%
-    \begin{tikzpicture}[
-        font=\scriptsize,
-        dict/.style={
-            draw,
-            rectangle,
-            align=left,
-            inner sep=4pt,
-            minimum width=2.6cm
-        },
-        arr/.style={->, thick, >=stealth},
-    ]
-        % AcroForm dictionary
-        \node[dict] (acro) {%
-            \begin{tabular}{@{}l@{}}
-                \multicolumn{1}{@{}c@{}}{\textbf{\sffamily AcroForm}}\\
-                \multicolumn{1}{@{}c@{}}{\scriptsize\textbf{\sffamily (1 0 obj)}}\\[2pt]
-                \texttt{\textbf{/Fields [2 0 R]}}
-            \end{tabular}
-        };
 
-        % Signature field
-        \node[dict, right=0.6cm of acro] (field) {%
-            \begin{tabular}{@{}l@{}}
-                \multicolumn{1}{@{}c@{}}{\textbf{\sffamily Signature field}}\\
-                \multicolumn{1}{@{}c@{}}{\scriptsize\textbf{\sffamily (2 0 obj)}}\\[2pt]
-                \texttt{/T \ \ \ Sig1}\\
-                \texttt{\textbf{/V \ \ \ 3 0 R}}\\
-                \texttt{/Rect [0 0 10 10]}\\
-                \texttt{/AP \ \ ...}\\
-                \texttt{/SigFieldLock ...}
-            \end{tabular}
-        };
-
-        % Signature dictionary
-        \node[dict, right=0.6cm of field] (sigdict) {%
-            \begin{tabular}{@{}l@{}}
-                \multicolumn{1}{@{}c@{}}{\textbf{\sffamily Signature dictionary}}\\
-                \multicolumn{1}{@{}c@{}}{\scriptsize\textbf{\sffamily (3 0 obj)}}\\[2pt]
-                \texttt{/Type \ \ /Sig}\\
-                \texttt{/ByteRange [...]}\\
-                \texttt{/Contents ...}\\
-            \end{tabular}
-        };
-
-        % references
-        \draw[arr] (acro.east)  -- (field.west);
-        \draw[arr] (field.east) -- (sigdict.west);
-    \end{tikzpicture}%
-    }
-    \caption{Signature-field structure. The \texttt{AcroForm} registers each signature field, which references its signature dictionary via \texttt{/V}.}
-    \label{fig:sig-field-structure}
-\end{figure}
-%\end{noindent}
 
 % \subsection{Digital Signatures}
 
 A document is digitally signed by appending a new \texttt{signature field}, linked to a page and to a new \texttt{signature dictionary}, as an \texttt{incremental update}. Each \texttt{signature dictionary} contains the user's certificate and a byte range covering the full document as it existed at signing time; the digital signature is computed over that byte range using the user's private key and stored within the \texttt{signature dictionary}.
 
-Appending signatures as incremental updates naturally supports multiple signatures on the same document. As shown in Figure~\ref{fig:multiple-signatures}, a new signature can be appended via another \texttt{incremental update} without invalidating any prior signature since the bytes covered by those earlier signatures remain unchanged.
+As shown in Figure~\ref{fig:multiple-signatures}, appending signatures as incremental updates naturally supports multiple signatures on the same document. A new signature can be appended without invalidating any prior one, since the bytes covered by earlier signatures remain unchanged.
 
 %\begin{noindent}
 \begin{figure}[htb]
@@ -331,22 +320,22 @@ Because \texttt{incremental updates} preserve all prior bytes, visual content ca
 
 The specification also provides mechanisms that make signatures sensitive to specific classes of modifications. \texttt{DocMDP} defines which types of modification are permitted before the signature is considered broken; \texttt{FieldMDP} locks specific form fields so that any change to them invalidates the signature; and \texttt{SigFieldLock} can do both capabilities. \texttt{DocMDP} and \texttt{FieldMDP} reside in the signature dictionary, while \texttt{SigFieldLock} is referenced by the signature field itself and its value is copied into \texttt{FieldMDP} at signing time. \texttt{DocMDP} and \texttt{SigFieldLock} share three permission levels: (i) level 1 forbids any modification; (ii) level 2 permits form fill-in and additional signatures; and (iii) level 3 additionally permits annotation creation, modification, and deletion.
 
-As described in~\cite{pdf-certification-attack}, PDF distinguishes between \emph{approval} signatures, which attest to the document's state, and a \emph{certification} signature, which additionally governs which modifications are permissible. A document may carry at most one certification signature, which must appear first; any number of approval signatures may follow. \texttt{DocMDP} is exclusive to certification signatures. \texttt{FieldMDP} and \texttt{SigFieldLock} may be used by either kind. Since PDF 2.0~\cite{iso32000-2}, \texttt{SigFieldLock} carries the same expressive power as \texttt{DocMDP}, allowing approval signatures to impose document-level modification restrictions as well. Table~\ref{tab:mdp-mechanisms} summarizes the differences.
+As described in~\cite{pdf-certification-attack}, PDF distinguishes between \emph{approval} signatures, which attest to the document's state, and a \emph{certification} signature, which additionally governs which modifications are permissible. A document may carry at most one certification signature, which must appear first; any number of approval signatures may follow. \texttt{DocMDP} is exclusive to certification signatures. \texttt{FieldMDP} and \texttt{SigFieldLock} may be used by either kind. Since PDF 2.0~\cite{iso32000-2}, \texttt{SigFieldLock} carries the same expressive power as \texttt{DocMDP}, allowing approval signatures to impose document-level modification restrictions as well. %Table~\ref{tab:mdp-mechanisms} summarizes the differences.
 
-\begin{table}[htb]
-	\centering
-	\small
-	\begin{tabular}{@{}l p{4.8cm} l@{}}
-		\hline
-		\textbf{Mechanism}    & \textbf{Scope}                                          & \textbf{Allowed in}           \\
-		\hline
-		\texttt{DocMDP}       & whole document, per permission level                    & certification signatures only \\
-		\texttt{FieldMDP}     & listed form fields only                                 & any signature                 \\
-		\texttt{SigFieldLock} & listed form fields, plus whole document (since PDF~2.0) & any signature                 \\
-		\hline
-	\end{tabular}
-	\caption{Capabilities of each PDF modification-permission mechanism.\label{tab:mdp-mechanisms}}
-\end{table}
+%\begin{table}[htb]
+%	\centering
+%	\small
+%	\begin{tabular}{@{}l p{4.8cm} l@{}}
+%		\hline
+%		\textbf{Mechanism}    & \textbf{Scope}                                          & \textbf{Allowed in}           \\
+%		\hline
+%		\texttt{DocMDP}       & whole document, per permission level                    & certification signatures only \\
+%		\texttt{FieldMDP}     & listed form fields only                                 & any signature                 \\
+%		\texttt{SigFieldLock} & listed form fields, plus whole document (since PDF~2.0) & any signature                 \\
+%		\hline
+%	\end{tabular}
+%	\caption{Capabilities of each PDF modification-permission mechanism.\label{tab:mdp-mechanisms}}
+%\end{table}
 
 
 \section{Threat Model} \label{sec:threat-model}
@@ -367,20 +356,20 @@ GUI verifiers show signature verification results through multiple visual compon
 
 \subsection{Programming Libraries}
 
-Programming libraries expose a binary veredict and a detailed report describing every check performed for each verified signature. We collapse both into a single abstraction, the \textbf{API-Layer}, since they are returned together in the same function response and any developer consuming the library has access to both at once.
+Programming libraries expose a binary verdict and a detailed report describing every check performed for each verified signature. We collapse both into a single abstraction, the \textbf{API-Layer}, since they are returned together in the same function response and any developer consuming the library has access to both at once.
 
-In this abstraction, the API-Layer answers two questions: whether the signature is considered valid, and whether any warning should be noted alongside the veredict. For instance, one of such warnings can be that the verifier detected an uncommon or post-signing modification but still accepts the signature as valid.
+In this abstraction, the API-Layer answers two questions: whether the signature is considered valid, and whether any warning should be noted alongside the verdict. For instance, one of such warnings can be that the verifier detected an uncommon or post-signing modification but still accepts the signature as valid.
 
 \subsection{Winning Conditions} \label{sec:winning-conditions}
 
 For each UI layer for GUI verifiers or the single API-Layer for library verifiers, we classify the outcome of an attack as follows~\cite{one-trillion-dollar-refund}. The output is \emph{vulnerable} (\CIRCLE) when it reports the signature as valid without flagging a post-signing modification. It is \emph{partially vulnerable} (\LEFTcircle) when it reports the signature as valid but raises a warning that the document was modified. It is \emph{secure} (\Circle) when it flags the signature as invalid.
 
-For GUI verifiers, an attack is \emph{successful} when both UI layers are vulnerable, and \emph{partially successful} when UI-Layer~1 is vulnerable while UI-Layer~2 is either \emph{partially vulnerable} or \emph{secure}. We treat partial success as meaningful because an inattentive user may rely solely on the top-bar banner and overlook the warning surfaced in the detail panel, accepting a modified document despite the recorded discrepancy. For library verifiers, an attack is \emph{successful} when the API-Layer is vulnerable, and \emph{partially successful} when it is partially vulnerable; the same reasoning applies, since a developer may consume only the binary veredict and ignore the accompanying warnings.
+For GUI verifiers, an attack is \emph{successful} when both UI layers are vulnerable, and \emph{partially successful} when UI-Layer~1 is vulnerable while UI-Layer~2 is either \emph{partially vulnerable} or \emph{secure}. We treat partial success as meaningful because an inattentive user may rely solely on the top-bar banner and overlook the warning surfaced in the detail panel, accepting a modified document despite the recorded discrepancy. For library verifiers, an attack is \emph{successful} when the API-Layer is vulnerable, and \emph{partially successful} when it is partially vulnerable; the same reasoning applies, since a developer may consume only the binary verdict and ignore the accompanying warnings.
 
 
 \section{Breaking Digital Signature Verifiers} \label{sec:attack-definitions}
 
-Our attacks exploits two underspecified aspects of the PDF specification~\cite{iso32000-2} to alter existing signature fields and use them to introduce visual changes. By modifying a signature field's existing entries, an attacker can place arbitrary visual content on a page. Consequently, attacks such as the one shown in Figure~\ref{fig:attack-example} can be carried out without invalidating the signature in affected verifiers.
+Our attacks exploit two underspecified aspects of the PDF specification~\cite{iso32000-2}. By modifying a signature field's existing entries, an attacker can place arbitrary visual content on a page, as in Figure~\ref{fig:attack-example}, without invalidating the signature in affected verifiers.
 
 \subsection{Appearance Substitution Attack (ASA)}
 
@@ -537,7 +526,7 @@ The text stops short of disallowing the configuration or prescribing how verifie
 
 \subsection{Root Cause}
 
-Both passages quoted above overlook how their rules interact with \texttt{incremental updates}. Filling a signature field and referencing a signature dictionary are each defined as a single event, at the moment a form is completed within one static revision. The specification never asks what should happen if a signature field is filled again in a later revision, after it was already filled once, nor what should happen if a second field is created in a later revision and pointed at a signature dictionary already established in an earlier one. ASA exploits the first gap and SFDA the second. In neither case did the specification make an explicit choice that turned out to be wrong; the questions were simply never asked. The complexity that incremental updates introduce around signature verification is a recurring contributor to the problems discussed throughout this paper and in prior work. 
+Both passages quoted above overlook how their rules interact with \texttt{incremental updates}. Filling a signature field and referencing a signature dictionary are each defined as a single event, at the moment a form is completed within one static revision. The specification never asks what should happen if a signature field is filled again in a later revision, after it was already filled once, nor what should happen if a second field is created in a later revision and pointed at a signature dictionary already established in an earlier one. ASA exploits the first gap and SFDA the second.
 
 \subsection{Limitations}
 
@@ -545,13 +534,13 @@ ASA can only modify an existing signature field, and is therefore constrained by
 
 Both attacks also depend on how tolerant a verifier is of post-signing modification, and on the permission configuration chosen when the document was signed. Some verifiers reject both attacks outright by treating any post-signing change, including benign ones, as invalidating, while others only reject them once a protection mechanism is explicitly configured, or once the modified or duplicated field is moved to a different page (Section~\ref{sec:evaluation}).
 
-Given both attacks abuse visual components of interactive fields, their rendering can vary across PDF readers. Some readers may highlight the field, make it clickable, or prevent text selection inside it. These artifacts can make the attack detectable by an attentive user, but prior work shows that users may still perform security-sensitive actions, such as entering their own credentials, when the inconsistencies are small~\cite{phishing-password-managers}. Similarly, in our setting, users may interpret these artifacts as quirks of the reader or verifier, especially when all signatures are reported as valid. This is also similar to prior attacks on PDF signatures, where the abused functionality left subtle visual inconsistencies~\cite{pdf-certification-attack}.
+Because both attacks abuse visual components of interactive fields, their rendering can vary across readers, which may highlight the field, make it clickable, or block text selection. Such artifacts can expose the attack to an attentive user, but prior work shows users still perform security-sensitive actions when inconsistencies are small~\cite{phishing-password-managers}; in our setting they may be dismissed as reader quirks, especially when all signatures are reported valid. Prior PDF-signature attacks left similar subtle inconsistencies~\cite{pdf-certification-attack}.
 
 
 
 \section{Methodology} \label{sec:methodology}
 
-We evaluate 14 verifiers spanning three categories against the Appearance Substitution Attack (ASA) and the Signature Field Duplication Attack (SFDA), classifying each outcome under the criteria of Section~\ref{sec:winning-conditions}. The four GUI verifiers are Adobe Acrobat~\cite{adobereader}, Foxit PDF Reader~\cite{foxitreader}, Master PDF Editor~\cite{masterpdfeditor}, and Microsoft Edge~\cite{microsoftedge}. The two library verifiers are pyHanko~\cite{pyhanko} and the European Commission's Digital Signature Services~\cite{eudss}. The eight web verifiers are the DSS Demonstration WebApp~\cite{dssdemo}, the ITI signature validator~\cite{itivalidador}, Certisign~\cite{certisign}, DigitalSign~\cite{digitalsign}, the Finnish DVV validator~\cite{dvv}, BRY Verifica~\cite{bry}, ZapSign~\cite{zapsign}, and Clicksign~\cite{clicksign}.
+We evaluate 17 verifiers spanning three categories against the Appearance Substitution Attack (ASA) and the Signature Field Duplication Attack (SFDA), classifying each outcome under the criteria of Section~\ref{sec:winning-conditions}. The four GUI verifiers are Adobe Acrobat~\cite{adobereader}, Foxit PDF Reader~\cite{foxitreader}, Master PDF Editor~\cite{masterpdfeditor}, and Microsoft Edge~\cite{microsoftedge}. The two library verifiers are pyHanko~\cite{pyhanko} and the European Commission's Digital Signature Services~\cite{eudss}. The eleven web verifiers are the DSS Demonstration WebApp~\cite{dssdemo}, the ITI signature validator~\cite{itivalidador}, Certisign~\cite{certisign}, DigitalSign~\cite{digitalsign}, the Finnish DVV validator~\cite{dvv}, BRY Verifica~\cite{bry}, ZapSign~\cite{zapsign}, Clicksign~\cite{clicksign}, ON-RCPN~\cite{onrcpn}, RNP~\cite{rnp}, and CenturySign~\cite{centurysign}.
 
 We use two testing strategies. For library verifiers and GUI desktop verifiers, where the trust anchors can be freely chosen, an automated tester (Section~\ref{sec:automated-tester}) evaluates every verifier against many possible attack configurations. For GUI web verifiers, whose trusted certificate lists are fixed by the creator and signatures with arbitrary parameters cannot be easily created, we perform a manual evaluation in which a single document carrying a signature accepted by the verifier is subjected to each attack. In both cases, we record the UI-Layer~1 and UI-Layer~2 outcomes for GUI verifiers, or the API-Layer outcome for library verifiers, and label each as \emph{vulnerable}, \emph{partially vulnerable}, or \emph{secure}.
 
@@ -560,21 +549,21 @@ Large Language Models such as Claude and Gemini were used for aiding on the impl
 
 \subsection{Automated Tester} \label{sec:automated-tester}
 
-The automated tester is composed of two execution flows: test-case generation and test execution. Test-case generation enumerates configurations of the trusted signature and, for each configuration, produces one PDF carrying the corresponding ASA attack and one PDF carrying the corresponding SFDA attack. Each generated file is persisted, together with its expected veredict, in a local database for use by later runs.\footnote{The source code of both tools can be accessed at: \url{https://mega.nz/folder/dJMkFI6C#Yt-WDQigDbBAp096a7GnlA}}
+The automated tester is composed of two execution flows: test-case generation and test execution. Test-case generation enumerates configurations of the trusted signature and, for each configuration, produces one PDF carrying the corresponding ASA attack and one PDF carrying the corresponding SFDA attack. Each generated file is persisted, together with its expected verdict, in a local database for use by later runs.
 %
-To generate test cases, we enumerate all combinations of the following parameters, except for the invalid case in which the signature is a certification signature and the MDP level is not defined.
+%To generate test cases, we enumerate all combinations of the following parameters, except for the invalid case in which the signature is a certification signature and the MDP level is not defined.
+%
+%\begin{itemize}
+%	\item $is\_certification\_signature \in \{true, false\}$: defines whether the trusted signature is a \texttt{certification} signature or an \texttt{approval} signature.
+%	\item $mdp\_level \in \{null, 1, 2, 3\}$: defines the permission level. If it is \emph{null} and the signature is an approval signature, no protection mechanism is included. If it is not \emph{null}, certification signatures use \texttt{/DocMDP}, while approval signatures use \texttt{SigFieldLock}, both configured with the selected permission level.
+%	\item $is\_signature\_field\_protected \in \{true, false\}$: defines whether the trusted signature field is protected by \texttt{FieldMDP}.
+%	\item $is\_stamp\_enabled \in \{true, false\}$: defines whether the trusted signature has a preexisting visual component.
+%	\item $change\_page \in \{true, false\}$: defines whether the modified or duplicated signature field should be placed on the same page as the original field.
+%\end{itemize}
 
-\begin{itemize}
-	\item $is\_certification\_signature \in \{true, false\}$: defines whether the trusted signature is a \texttt{certification} signature or an \texttt{approval} signature.
-	\item $mdp\_level \in \{null, 1, 2, 3\}$: defines the permission level. If it is \emph{null} and the signature is an approval signature, no protection mechanism is included. If it is not \emph{null}, certification signatures use \texttt{/DocMDP}, while approval signatures use \texttt{SigFieldLock}, both configured with the selected permission level.
-	\item $is\_signature\_field\_protected \in \{true, false\}$: defines whether the trusted signature field is protected by \texttt{FieldMDP}.
-	\item $is\_stamp\_enabled \in \{true, false\}$: defines whether the trusted signature has a preexisting visual component.
-	\item $change\_page \in \{true, false\}$: defines whether the modified or duplicated signature field should be placed on the same page as the original field.
-\end{itemize}
+For library verifiers, each test case is submitted through the relevant verification function and the returned verdict and modification warnings are stored directly, populating the API-Layer from the layered model. For GUI desktop verifiers, the tester follows the screenshot-based approach of previous works~\cite{pdf-certification-attack}: it opens the document in the verifier, captures one screenshot per UI layer being evaluated, and classifies each by template matching against a small reference-image set per verifier and layer, one set per outcome class (\emph{valid}, \emph{warn}, \emph{invalid}). The \emph{warn} class captures the partial-vulnerability case of Section~\ref{sec:winning-conditions}, in which the verifier accepts the signature but raises a warning that the document was modified after signing.
 
-For library verifiers, each test case is submitted through the relevant verification function and the returned veredict and modification warnings are stored directly, populating the API-Layer from the layered model. For GUI desktop verifiers, the tester follows the screenshot-based approach of previous works~\cite{pdf-certification-attack}: it opens the document in the verifier, captures one screenshot per UI layer being evaluated, and classifies each by template matching against a small reference-image set per verifier and layer, one set per outcome class (\emph{valid}, \emph{warn}, \emph{invalid}). The \emph{warn} class captures the partial-vulnerability case of Section~\ref{sec:winning-conditions}, in which the verifier accepts the signature but raises a warning that the document was modified after signing.
-
-The self-issued certificate used to produce trusted signatures for the automated tester uses a 2048-bit RSA key and a SHA-256 signature. For web verifiers, whose accepted certificate chains cannot be extended by an outside party, we instead used arbitrary documents already carrying a signature issued by a CA the verifier already trusts. The template-matching classifier described above accepts a match once the normalized cross-correlation coefficient between a screenshot and a reference image reaches at least 0.95. Because each attack is tested against 112 configurations per verifier, Table~\ref{tab:results} reports a single summary veredict per verifier and attack, chosen by picking the configuration protected by the most restrictive DocMDP or SigFieldLock level for which the automated classification is still \emph{vulnerable}, falling back to the most restrictive configuration classified \emph{partially vulnerable}, and to \emph{secure} if neither exists. We manually inspected the screenshot of this selected configuration for every verifier and attack and confirmed it matches the automated veredict.
+The self-issued certificate used to produce trusted signatures for the automated tester uses a 2048-bit RSA key and a SHA-256 signature. For web verifiers, whose accepted certificate chains cannot be extended by an outside party, we instead used arbitrary documents already carrying a signature issued by a CA the verifier already trusts. The template-matching classifier described above accepts a match once the normalized cross-correlation coefficient between a screenshot and a reference image reaches at least 0.95. % TODO: say it can fail
 
 \section{Evaluation} \label{sec:evaluation}
 
@@ -600,13 +589,13 @@ The self-issued certificate used to produce trusted signatures for the automated
 		DVV                                                         &                  & web               & \LEFTcircle\hspace{4pt}\Circle & \LEFTcircle\hspace{4pt}\Circle &                            \\
 		BRY Verifica                                                &                  & web               & \CIRCLE\hspace{4pt}\LEFTcircle & \CIRCLE\hspace{4pt}\LEFTcircle &                            \\
 		ZapSign                                                     &                  & web               & \Circle\hspace{4pt}\Circle     & \Circle\hspace{4pt}\Circle     &                            \\
-		ON-RCPN
-
-		                                                            &                  & web               & \Circle\hspace{4pt}\Circle     & \Circle\hspace{4pt}\Circle     &                            \\
+		ON-RCPN                                                     &                  & web               & \Circle\hspace{4pt}\Circle     & \Circle\hspace{4pt}\Circle     &                            \\
 		Clicksign                                                   &                  & web               & \CIRCLE\hspace{4pt}\CIRCLE     & \CIRCLE\hspace{4pt}\CIRCLE     &                            \\
+		RNP                                                         &                  & web               & \CIRCLE\hspace{4pt}\Circle     & \CIRCLE\hspace{4pt}\Circle     &                            \\
+		CenturySign                                                 &                  & web               & \Circle\hspace{4pt}\Circle     & \Circle\hspace{4pt}\Circle     &                            \\
 		\hline
-		\multicolumn{3}{@{}l}{\textbf{ASA, vulnerable or partial}}  & 11/13            & 11/13             & 1/2                                                                                          \\
-		\multicolumn{3}{@{}l}{\textbf{SFDA, vulnerable or partial}} & 7/13             & 6/13              & 1/2                                                                                          \\
+		\multicolumn{3}{@{}l}{\textbf{ASA, vulnerable or partial}}  & 12/15            & 12/15             & 1/2                                                                                          \\
+		\multicolumn{3}{@{}l}{\textbf{SFDA, vulnerable or partial}} & 7/15             & 6/15              & 1/2                                                                                          \\
 		\hline
 	\end{tabular}
 	\label{tab:results}
@@ -614,13 +603,13 @@ The self-issued certificate used to produce trusted signatures for the automated
 
 All results in Table~\ref{tab:results} are tied to the specific software versions listed and reflect the state of each verifier at the time of testing. Vendors may patch the underlying issue in later releases, particularly following the disclosure notifications described in Section~\ref{sec:ethics}. We therefore treat these results as a snapshot rather than a permanent characterization of each product.
 
-Our evaluation covers 8 web-based, 4 desktop, and 2 library verifiers. Desktop and library verifiers, which support automation, were each evaluated against 112 crafted PDF documents; web verifiers were evaluated manually with a single document carrying a signature trusted by each verifier. Desktop tests ran on Windows 11, web tests on Windows 11 with Microsoft Edge, and library tests on NixOS 26. Signatures for the automated tests were produced by a custom pyHanko script using a self-issued certificate. The results of the evaluation can be seen at Table~\ref{tab:results}.
+Our evaluation covers 11 web-based, 4 desktop, and 2 library verifiers. Desktop and library verifiers, which support automation, were each evaluated against 112 crafted PDF documents; web verifiers were evaluated manually with a single document carrying a signature trusted by each verifier. Desktop tests ran on Windows 11, web tests on Windows 11 with Microsoft Edge, and library tests on NixOS 26. Signatures for the automated tests were produced by a custom pyHanko script using a self-issued certificate.
 
-We first analyze how ASA performs against the evaluated verifiers. As Table~\ref{tab:results} shows, the large majority of verifiers are vulnerable to ASA at \textbf{UI-Layer~1} or the \textbf{API-Layer}, the layers users rely on to judge whether a signature is valid. With the sole exception of Foxit, every GUI verifier vulnerable to ASA at \textbf{UI-Layer~1} is also vulnerable at \textbf{UI-Layer~2}, so the detail panel rarely catches the attack even when the user opens it. By the criteria of Section~\ref{sec:winning-conditions}, this yields 7 \emph{successful} attacks and 5 \emph{partially successful} ones.
+As Table~\ref{tab:results} shows, the large majority of verifiers are vulnerable to ASA at \textbf{UI-Layer~1} or the \textbf{API-Layer}, the layers users rely on to judge whether a signature is valid. With the sole exception of Foxit, every GUI verifier vulnerable to ASA at \textbf{UI-Layer~1} is also vulnerable at \textbf{UI-Layer~2}, so the detail panel rarely catches the attack even when the user opens it. By the criteria of Section~\ref{sec:winning-conditions}, this yields 8 \emph{successful} attacks and 5 \emph{partially successful} ones.
 
-We then analyze how SFDA performs against the evaluated verifiers. SFDA reaches slightly fewer verifiers than ASA, with exactly half of the GUI and library verifiers reporting the signature as valid in some form at \textbf{UI-Layer~1} or the \textbf{API-Layer}. As with ASA, Foxit is the only GUI verifier whose veredict downgrades between UI layers, going from fully vulnerable at \textbf{UI-Layer~1} to \emph{secure} at \textbf{UI-Layer~2}. Overall, SFDA yields 6 \emph{successful} attacks and 2 \emph{partially successful} ones.
+SFDA reaches slightly fewer verifiers than ASA, with exactly half of the GUI and library verifiers reporting the signature as valid in some form at \textbf{UI-Layer~1} or the \textbf{API-Layer}. As with ASA, Foxit is the only GUI verifier whose verdict downgrades between UI layers, going from fully vulnerable at \textbf{UI-Layer~1} to \emph{secure} at \textbf{UI-Layer~2}. Overall, SFDA yields 6 \emph{successful} attacks and 2 \emph{partially successful} ones.
 
-Foxit's downgrade between UI layers reflects how it renders \textbf{UI-Layer~1}. Inspecting the automated test outputs, we observed that even when the underlying checks detect post-signing modifications, the top bar shows only a green ``certified document'' icon and no further detail. The warnings driving the partial \textbf{UI-Layer~2} veredict for ASA, and the \emph{secure} veredict for SFDA, only appear once the user opens the per-signature detail panel.
+Foxit's downgrade between UI layers reflects how it renders \textbf{UI-Layer~1}. Inspecting the automated test outputs, we observed that even when the underlying checks detect post-signing modifications, the top bar shows only a green ``certified document'' icon and no further detail. The warnings driving the partial \textbf{UI-Layer~2} verdict for ASA, and the \emph{secure} veredict for SFDA, only appear once the user opens the per-signature detail panel.
 
 The page-change variants of the two attacks behave asymmetrically. Every verifier vulnerable to SFDA at \textbf{UI-Layer~1} remains vulnerable when the duplicated signature field is placed on a different page. This is arguably the stronger variant, since it lets the attacker stage the forged appearance over arbitrary content on any page. The same does not hold for ASA, where DSS, ITI, BRY, and DigitalSign all reject the attack once the modified signature field is relocated to a different page.
 
@@ -632,58 +621,60 @@ The pyHanko library is vulnerable to SFDA only when neither \texttt{DocMDP} nor 
 
 We propose countermeasures for both attacks at three levels: the specification, individual verifiers, and external detection tooling.
 %
-As outlined in Section~\ref{sec:attack-definitions}, both attacks exploit ambiguities in the PDF specification that allow a document's visual content to be modified without invalidating the signature. ASA leverages the absence of a precise definition of what \emph{filling} a signature field entails, which lets verifiers treat post-signing changes to \texttt{/AP} and \texttt{/Rect} as non-invalidating. SFDA leverages the absence of any prescribed behavior when multiple signature fields reference the same signature dictionary, which lets an attacker introduce a duplicate field that the verifier renders as a valid signature.
+As outlined in Section~\ref{sec:attack-definitions}, both attacks exploit ambiguities in the PDF specification that allow a document's visual content to be modified without invalidating the signature.% ASA leverages the absence of a precise definition of what \emph{filling} a signature field entails, which lets verifiers treat post-signing changes to \texttt{/AP} and \texttt{/Rect} as non-invalidating. SFDA leverages the absence of any prescribed behavior when multiple signature fields reference the same signature dictionary, which lets an attacker introduce a duplicate field that the verifier renders as a valid signature.
 
 The specification can close both gaps. To prevent ASA, ISO~32000-2 should require that any modification to the \texttt{/AP} or \texttt{/Rect} of a filled signature field invalidates the protecting signature, regardless of the prevailing \texttt{DocMDP} or \texttt{SigFieldLock} permission level. To prevent SFDA, it should require that no two signature fields reference the same signature dictionary, or, as a weaker but still sufficient alternative, that all fields referencing a given signature dictionary already exist when the dictionary is created.
 
-At the verifier level, individual implementations can adopt both of the above rules without waiting for the specification to change. This precedent already exists since many of the attacks reported in prior work~\cite{pdf-certification-attack,shadow-attacks,processing-dangerous-paths,one-trillion-dollar-refund,practical-decryption-exfiltration} were addressed by individual verifier vendors rather than by amendments to ISO~32000. Verifier-level mitigation, however, does not scale; every new verifier implementation can reintroduce the same class of vulnerability present in old versions of more mature verifiers.
+Individual verifier implementations can adopt both of the above rules without waiting for the specification to change. This precedent already exists since many of the attacks reported in prior work~\cite{pdf-certification-attack,shadow-attacks,processing-dangerous-paths,one-trillion-dollar-refund,practical-decryption-exfiltration} were addressed by individual verifier vendors rather than by amendments to ISO~32000. Verifier-level mitigation, however, does not scale; every new verifier implementation can reintroduce the same class of vulnerability present in old versions of more mature verifiers.
 
-At the detection-tooling level, we provide a Python tool that takes a PDF as input and produces a textual report indicating whether either attack is present. When an attack is detected, the report identifies the affected signature fields and the offending PDF objects. ASA is detected by comparing each signature field as it appears in the revision that signed it against its appearance in the latest revision; if \texttt{/AP} or \texttt{/Rect} differ, the document is flagged. SFDA is detected by scanning the latest revision for pairs of signature fields that reference the same signature dictionary and verifying, for each pair, whether at least one of the fields was introduced in an incremental update later than the dictionary it references.
+We provide a Python tool that takes a PDF as input and produces a textual report indicating whether either attack is present. When an attack is detected, the report identifies the affected signature fields and the offending PDF objects. ASA is detected by comparing each signature field as it appears in the revision that signed it against its appearance in the latest revision; if \texttt{/AP} or \texttt{/Rect} differ, the document is flagged. SFDA is detected by scanning the latest revision for pairs of signature fields that reference the same signature dictionary and verifying, for each pair, whether at least one of the fields was introduced in an incremental update later than the dictionary it references.
 
 
 \section{Related Works} \label{sec:related-works}
 
-The study One Trillion Dollar Refund~\cite{one-trillion-dollar-refund} published a large study on approval signatures. They found three attacks that break verifiers. The Universal Signature Forgery (USF) changes the signature dictionary so the verifier cannot find what it needs but still reports the signature as valid. The Incremental Saving Attack (ISA) appends a broken incremental update that adds visual modification. The Signature Wrapping Attack (SWA) moves the signed bytes elsewhere and puts new content in place.
+One Trillion Dollar Refund~\cite{one-trillion-dollar-refund} presented three attacks against approval-signature verifiers. The Universal Signature Forgery (USF) changes the signature dictionary so the verifier cannot find what it needs but still reports the signature as valid. The Incremental Saving Attack (ISA) appends a broken incremental update that adds visual modification. The Signature Wrapping Attack (SWA) moves the signed bytes elsewhere and puts new content in place.
 
 Subsequent work introduced shadow attacks~\cite{shadow-attacks}, building on top of~\cite{one-trillion-dollar-refund}, which use spec-compliant incremental updates instead of broken ones. Their attack plants hidden content in the document before it is signed and reveals it afterwards through normal incremental updates.
 
 In contrast, later work examined certification signatures and identified two attacks~\cite{pdf-certification-attack}. The Evil Annotation Attack (EAA) adds annotations that hide or replace certified content. The Sneaky Signature Attack (SSA) adds a new signature whose appearance covers attacker-controlled content. Both attacks abuse changes that \texttt{DocMDP} allows. SSA also requires the attacker to get a fresh certificate trusted by the verifier, since the new signature has to be considered valid.
 
-ASA differs from these attacks in how it works and in what it asks of the attacker. Unlike USF, ISA, and SWA, ASA uses solely incremental updates fully within the spec. Unlike the shadow attacks, ASA does not need access to the document before signing, and it can be applied to any signed PDF that already has an existing signature. The closest match is EAA, which also covers the page with attacker-chosen content. The difference is that EAA uses a new annotation, which depends on the annotation permissions of \texttt{DocMDP} and \texttt{SigFieldLock}. ASA changes the signature field's own \texttt{/AP} and \texttt{/Rect}, which affected verifiers treat as part of filling the field. This effectively allows ASA to work at lower permission levels than EAA.
+Unlike USF, ISA, and SWA, ASA uses solely incremental updates fully within the spec. Unlike the shadow attacks, ASA needs no access to the document before signing and can be applied to any already-signed PDF. The closest match is EAA, which also covers the page with attacker-chosen content, but through a new annotation governed by \texttt{DocMDP}/\texttt{SigFieldLock} annotation permissions, ASA instead changes the signature field's own \texttt{/AP} and \texttt{/Rect}, which affected verifiers treat as part of filling the field, letting it work at lower permission levels than EAA.
 
-SFDA also works only on already-signed PDFs and follows the spec. The closest match is SSA, since both add a new signature field that the verifier shows as valid. The difference is that SSA brings its own signature dictionary, which forces the attacker to get a trusted certificate. SFDA points the new field at a signature dictionary already present in the document, so no extra certificate is needed. This widens the threat to settings where a trusted certificate is hard to get, such as documents signed under closed PKIs. The duplicated field also shows up under the original signer's name and certificate chain, which makes the forgery harder to dismiss than the unfamiliar identity that SSA produces.
+SFDA also works only on already-signed PDFs and follows the spec. The closest match is SSA, since both add a new signature field the verifier shows as valid, but SSA brings its own signature dictionary, forcing the attacker to obtain a trusted certificate, while SFDA points the new field at a signature dictionary already present in the document. This widens the threat to settings where a trusted certificate is hard to get, such as documents signed under closed PKIs, and the duplicated field inherits the original signer's name and certificate chain, making the forgery harder to dismiss than SSA's unfamiliar identity.
 
 Table~\ref{tab:comparison-matrix} summarizes the attacks discussed above along the dimensions that separate them.
 
 \begin{table}[htb]
 	\centering
 	\footnotesize
-	\begin{tabular}{@{}l c c c l@{}}
+	\resizebox{\linewidth}{!}{%
+	\begin{tabular}{@{}l c c c c l@{}}
 		\hline
-		\textbf{Attack}                       & \textbf{Spec-comp.?} & \textbf{Pre-sign?} & \textbf{Own cert.?} & \textbf{Targets}                          \\
+		\textbf{Attack}                       & \textbf{Spec-comp.?} & \textbf{Pre-sign?} & \textbf{Own cert.?} & \textbf{MDP~2?} & \textbf{Targets}                          \\
 		\hline
-		USF~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & Signature dictionary                      \\
-		ISA~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & Xref table / trailer                      \\
-		SWA~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & Signed byte range                         \\
-		Shadow~\cite{shadow-attacks}          & Yes                  & Yes                & No                  & Hidden content                            \\
-		EAA~\cite{pdf-certification-attack}   & Yes                  & No                 & No                  & Annotations                               \\
-		SSA~\cite{pdf-certification-attack}   & Yes                  & No                 & Yes                 & New signature field                       \\
-		\textbf{ASA (ours)}                   & Yes                  & No                 & No                  & Sig. field (\texttt{/AP}, \texttt{/Rect}) \\
-		\textbf{SFDA (ours)}                  & Yes                  & No                 & No                  & Sig. field duplication                    \\
+		USF~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & No              & Signature dictionary                      \\
+		ISA~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & No              & Xref table / trailer                      \\
+		SWA~\cite{one-trillion-dollar-refund} & No                   & No                 & No                  & No              & Signed byte range                         \\
+		Shadow~\cite{shadow-attacks}          & Yes                  & Yes                & No                  & No              & Hidden content                            \\
+		EAA~\cite{pdf-certification-attack}   & Yes                  & No                 & No                  & No              & Annotations                               \\
+		SSA~\cite{pdf-certification-attack}   & Yes                  & No                 & Yes                 & Yes             & New signature field                       \\
+		\textbf{ASA (ours)}                   & Yes                  & No                 & No                  & Yes             & Sig. field (\texttt{/AP}, \texttt{/Rect}) \\
+		\textbf{SFDA (ours)}                  & Yes                  & No                 & No                  & Yes             & Sig. field duplication                    \\
 		\hline
-	\end{tabular}
-	\caption{Comparison of PDF signature-forgery attacks. \emph{Spec-compliant} means the resulting PDF conforms to the structural requirements of ISO~32000-2 (well-formed xref table and trailer, valid signature-dictionary entries, correct file termination); an attack marked \emph{No} requires violating at least one such requirement to succeed. USF, ISA, SWA, Shadow, EAA, and SSA were disclosed years ago and have since been addressed by affected vendors while ASA and SFDA were confirmed against the current verifier versions listed in Table~\ref{tab:results}.}
+	\end{tabular}%
+	}
+	\caption{Comparison of PDF signature-forgery attacks.}
 	\label{tab:comparison-matrix}
 \end{table}
 
 
 \section{Ethical Considerations and Responsible Disclosure} \label{sec:ethics}
 
-This paper demonstrates practical attacks against 14 signature verifiers, several of which are commercial products in wide use. We follow a coordinated disclosure process to notify affected vendors before these findings are made public.
+This paper demonstrates practical attacks against 17 signature verifiers, several of which are commercial products in wide use. We follow a coordinated disclosure process to notify affected vendors before these findings are made public.
 
 We have notified the vendor or maintainer of every verifier found vulnerable or partially vulnerable to ASA or SFDA under the criteria of Section~\ref{sec:winning-conditions}, and are working with each toward a fix. We follow a 30-day disclosure window per vendor, counted from the date of notification. Because not every vendor has shipped a fix as of this submission, we cannot yet publish a complete table of dates; we will publish the affected verifiers and their fixed versions at \url{TODO} once every vendor has fixed the issue or reached the end of its window, or otherwise in an updated version of this paper before final publication. % TODO: fill in artifact/tracking URL before camera-ready
 
-We release the detection tool of Section~\ref{sec:countermeasures} in full, and a simplified version of the test-case generation framework of Section~\ref{sec:methodology} that omits the code assembling a concrete attack chain, as part of the SBSeg artifact submission. We withhold the full generation framework and the malicious PDFs produced during our evaluation until the targeted verifier has been fixed or its disclosure window has closed. This limits how directly other researchers can reproduce our results, a cost we accept given the simplified framework still documents our methodology, and publishing ready-to-use exploits for unfixed vulnerabilities would put users of the affected products at unnecessary risk.
+We release the detection tool of Section~\ref{sec:countermeasures} in full, and a simplified version of the test-case generation framework of Section~\ref{sec:methodology} that omits the code assembling a concrete attack chain, as part of the SBSeg artifact submission. We withhold the full generation framework and the malicious PDFs produced during our evaluation until the targeted verifier has been fixed or its disclosure window has closed.
 
 
 \section{Conclusion} \label{sec:conclusion}
@@ -692,7 +683,9 @@ PDF signatures provide a standardized and consistent way for someone to approve 
 
 Although we proposed countermeasures to mitigate the damage such attacks can cause, both this work and previous attacks can be seen as proof that the large complexity of the PDF specification, coupled with the decentralized ecosystem where each verifier implements its own algorithm and interprets the ISO in its own way, creates fertile ground for attacks of this kind. In fact, one could argue that incremental updates, which greatly complicate signature validation, are themselves a dangerous functionality, given that both the attacks introduced here and more than half of those in Section~\ref{sec:related-works} abuse incremental updates in one way or another. As future work, it would be valuable to define a standardized verification algorithm on which all verifiers could base their implementations.
 
+\section*{Acknowledgements}
 
+This research was partially financed by ON-RCPN.
 
 
 
@@ -700,3 +693,5 @@ Although we proposed countermeasures to mitigate the damage such attacks can cau
 \bibliography{sbc-template}
 
 \end{document}
+
+
