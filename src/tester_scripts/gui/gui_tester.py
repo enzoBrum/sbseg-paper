@@ -74,6 +74,8 @@ class GuiReaderConfig:
     capture_layer_1: Callable[[Path], bytes]
     # Layer 2: detail panel — stub by setting equal to capture_layer_1.
     capture_layer_2: Callable[[Path], bytes]
+    # Optional verifier-specific cleanup for dialogs that obstruct automation.
+    handle_popups: Callable[[], None] | None = None
     imgs_dir: Path | None = None
     reference_imgs: dict[int, dict[str, list[str]]] = field(default_factory=dict)
     ready_region: tuple[int, int, int, int] | None = None
@@ -93,22 +95,35 @@ def _execute_reader(
 
     begin = time.time()
     pyautogui.moveTo(10, 10)
+
+    def handle_popups() -> None:
+        if config.handle_popups is not None:
+            config.handle_popups()
+
     try:
         print("OPEN")
         config.open_pdf(file_to_test)
+        handle_popups()
         print("WAIT READY")
-        wait_for_img(config.ready_images, 60)
+        wait_for_img(config.ready_images, 60, callback=handle_popups)
+        handle_popups()
 
         if config.pre_capture_layer_1 is not None:
             print("PRE 1")
+            handle_popups()
             config.pre_capture_layer_1()
+            handle_popups()
         print("1")
+        handle_popups()
         l1 = config.capture_layer_1(screenshot_dir / f"{test_id}_l1.png")
 
         if config.pre_capture_layer_2 is not None:
             print("PRE 2")
+            handle_popups()
             config.pre_capture_layer_2()
+            handle_popups()
         print("2")
+        handle_popups()
         l2 = config.capture_layer_2(screenshot_dir / f"{test_id}_l2.png")
 
         return l1, l2
