@@ -25,6 +25,13 @@ _POPUPS = [
         [[POPUP_DIR / "always_open_no.png"]],
     ),
     (
+        POPUP_DIR / "always_open_alt_dialog.png",
+        [
+            [POPUP_DIR / "always_open_alt_checkbox.png"],
+            [POPUP_DIR / "always_open_alt_no.png"],
+        ],
+    ),
+    (
         POPUP_DIR / "free_trial_dialog.png",
         [[POPUP_DIR / "free_trial_close.png"]],
     ),
