@@ -1,3 +1,6 @@
+import time
+import traceback
+
 from tester_scripts.gui.verifiers import REGISTRY as _GUI_REGISTRY
 from tester_scripts.gui.verifiers import test as _gui_test
 from tester_scripts.library.tester import test as _lib_test
@@ -14,7 +17,16 @@ _RUNNERS = (
 def test(name: str, where_clause=None) -> None:
     for registry, run in _RUNNERS:
         if name in registry:
-            return run(name, where_clause=where_clause)
+            attempts = 3 if registry is _GUI_REGISTRY else 1
+            for attempt in range(1, attempts + 1):
+                try:
+                    return run(name, where_clause=where_clause)
+                except Exception:
+                    if attempt == attempts:
+                        raise
+                    traceback.print_exc()
+                    print(f"{name} failed; retrying ({attempt + 1}/{attempts})")
+                    time.sleep(2)
     if name in _WEB_REGISTRY:
         raise ValueError(
             f"{name!r} is a web verifier (tested manually). "

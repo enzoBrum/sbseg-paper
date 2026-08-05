@@ -5,6 +5,7 @@ import pyautogui
 
 from tester_scripts.gui.gui_tester import (
     GuiReaderConfig,
+    gui_action,
     open_maximized,
     wait_for_img,
 )
@@ -22,18 +23,18 @@ def _open(path: Path) -> None:
 def _pre_capture1():
     bt = wait_for_img([IMG_DIR / "sig_button.png"], 30, confidence=0.8)
     assert bt is not None
-    pyautogui.moveTo(bt.x, bt.y)
-    pyautogui.click()
-    pyautogui.moveTo(1, 1)
+    gui_action(pyautogui.moveTo, bt.x, bt.y)
+    gui_action(pyautogui.click, check_popups=True)
+    gui_action(pyautogui.moveTo, 1, 1)
 
 
 def _capture(result_path: Path) -> bytes:
-    pyautogui.screenshot(result_path)
+    gui_action(pyautogui.screenshot, result_path, check_popups=True)
     return result_path.read_bytes()
 
 
 def _cleanup() -> None:
-    pyautogui.hotkey("ctrl", "w", interval=0.2)
+    gui_action(pyautogui.hotkey, "ctrl", "w", interval=0.2)
     wait_for_img([IMG_DIR / "sbar.png"], 30)
 
 

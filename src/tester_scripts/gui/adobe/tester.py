@@ -1,11 +1,11 @@
 import subprocess
-import time
 from pathlib import Path
 
 import pyautogui
 
 from tester_scripts.gui.gui_tester import (
     GuiReaderConfig,
+    gui_action,
     open_maximized,
     wait_for_img,
 )
@@ -102,9 +102,7 @@ def _handle_popups() -> None:
                 if point is None:
                     # Escape may dismiss a dialog whose rendering no longer
                     # matches its captured button state.
-                    time.sleep(0.5)
-                    pyautogui.press("esc")
-                    time.sleep(0.5)
+                    gui_action(pyautogui.press, "esc")
                     dialog = _find_dialog(dialog_path)
                     if dialog is None:
                         break
@@ -120,10 +118,8 @@ def _handle_popups() -> None:
                             f"Could not dismiss Adobe popup: {dialog_path.name}"
                         )
 
-                time.sleep(0.5)
-                pyautogui.moveTo(point.x, point.y)
-                pyautogui.click()
-                time.sleep(0.5)
+                gui_action(pyautogui.moveTo, point.x, point.y)
+                gui_action(pyautogui.click)
             break
 
         if not handled:
@@ -142,23 +138,21 @@ def _pre_capture() -> None:
 
     bt = wait_for_img([IMG_DIR / "button_1.png"], 30, callback=_handle_popups)
     assert bt is not None
-    pyautogui.moveTo(bt.x, bt.y)
-    pyautogui.click()
-    _handle_popups()
+    gui_action(pyautogui.moveTo, bt.x, bt.y)
+    gui_action(pyautogui.click, check_popups=True)
 
     bt = wait_for_img(
         [IMG_DIR / "verify_button.png"], 30, callback=_handle_popups
     )
     assert bt is not None
-    pyautogui.moveTo(bt.x, bt.y)
-    pyautogui.click()
-    _handle_popups()
+    gui_action(pyautogui.moveTo, bt.x, bt.y)
+    gui_action(pyautogui.click, check_popups=True)
 
     print("[Pre-capture finished]")
 
 
 def _capture(result_path: Path) -> bytes:
-    pyautogui.screenshot(result_path)
+    gui_action(pyautogui.screenshot, result_path, check_popups=True)
     return result_path.read_bytes()
 
 

@@ -17,6 +17,33 @@ RETRIES = 10
 
 _EVAL_MISS_RETRIES = 2
 _SW_MAXIMIZE = 3
+_ACTION_DELAY = 0.5
+_POPUP_HANDLER: Callable[[], None] | None = None
+_CHECKING_POPUPS = False
+
+
+def _check_popups() -> None:
+    """Run the active popup handler without allowing recursive checks."""
+    global _CHECKING_POPUPS
+    if _POPUP_HANDLER is None or _CHECKING_POPUPS:
+        return
+    _CHECKING_POPUPS = True
+    try:
+        _POPUP_HANDLER()
+    finally:
+        _CHECKING_POPUPS = False
+
+
+def gui_action(action, *args, check_popups: bool = False, **kwargs):
+    """Give the desktop time to settle around every PyAutoGUI action."""
+    time.sleep(_ACTION_DELAY)
+    try:
+        result = action(*args, **kwargs)
+    finally:
+        time.sleep(_ACTION_DELAY)
+    if check_popups:
+        _check_popups()
+    return result
 
 
 def open_maximized(executable: str, document: Path) -> subprocess.Popen[bytes]:
@@ -107,11 +134,10 @@ def _execute_reader(
     screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     begin = time.time()
-    pyautogui.moveTo(10, 10)
+    gui_action(pyautogui.moveTo, 10, 10)
 
     def handle_popups() -> None:
-        if config.handle_popups is not None:
-            config.handle_popups()
+        _check_popups()
 
     try:
         print("OPEN")
@@ -121,8 +147,13 @@ def _execute_reader(
         wait_for_img(config.ready_images, 60, callback=handle_popups)
         handle_popups()
         # Single-instance applications can ignore the startup window state.
-        pyautogui.hotkey("win", "up", interval=0.1)
-        time.sleep(0.2)
+        gui_action(
+            pyautogui.hotkey,
+            "win",
+            "up",
+            interval=0.1,
+            check_popups=True,
+        )
 
         if config.pre_capture_layer_1 is not None:
             print("PRE 1")
@@ -149,6 +180,8 @@ def _execute_reader(
 
 
 def run_gui_tester(config: GuiReaderConfig, where_clause=None) -> None:
+    global _POPUP_HANDLER
+
     from sqlalchemy import func, select
 
     from modification_pipeline.model import get_session
@@ -161,6 +194,7 @@ def run_gui_tester(config: GuiReaderConfig, where_clause=None) -> None:
     )
     from tester_scripts.gui.verifiers import SEED_DATA as _GUI_SEED
 
+    _POPUP_HANDLER = config.handle_popups
     _version = config.version or next(
         (v for slug, _, v in _GUI_SEED if slug == config.slug), None
     )
@@ -202,7 +236,7 @@ def run_gui_tester(config: GuiReaderConfig, where_clause=None) -> None:
                     )
                 except Exception:
                     traceback.print_exc()
-                    pyautogui.hotkey("alt", "f4", interval=0.1)
+                    gui_action(pyautogui.hotkey, "alt", "f4", interval=0.1)
                     time.sleep(5)
                     continue
 
@@ -233,10 +267,10 @@ def run_gui_tester(config: GuiReaderConfig, where_clause=None) -> None:
                     )
                     raise Exception("Could not validate")
 
-                pyautogui.hotkey("alt", "f4", interval=0.1)
+                gui_action(pyautogui.hotkey, "alt", "f4", interval=0.1)
                 time.sleep(5)
             else:
-                print(f"Could not complete {t.id}")
+                raise RuntimeError(f"Could not complete test {t.id}")
 
             r1, r2 = layer_results[1], layer_results[2]
             results.append(

@@ -6,6 +6,7 @@ import pyautogui
 
 from tester_scripts.gui.gui_tester import (
     GuiReaderConfig,
+    gui_action,
     open_maximized,
     wait_for_img,
 )
@@ -91,8 +92,7 @@ def _handle_standard_popups() -> None:
             for action_paths in actions:
                 point = _find_action(action_paths, region)
                 if point is None:
-                    pyautogui.press("esc")
-                    time.sleep(0.2)
+                    gui_action(pyautogui.press, "esc")
                     dialog = _find_dialog(dialog_path)
                     if dialog is None:
                         break
@@ -108,9 +108,8 @@ def _handle_standard_popups() -> None:
                             f"Could not dismiss Foxit popup: {dialog_path.name}"
                         )
 
-                pyautogui.moveTo(point.x, point.y)
-                pyautogui.click()
-                time.sleep(0.2)
+                gui_action(pyautogui.moveTo, point.x, point.y)
+                gui_action(pyautogui.click)
             break
 
         if not handled:
@@ -130,12 +129,11 @@ def _click_when_visible(
     )
     if point is None:
         raise RuntimeError(f"Could not find Foxit control: {label}")
-    pyautogui.moveTo(point.x, point.y)
+    gui_action(pyautogui.moveTo, point.x, point.y)
     if right_click:
-        pyautogui.rightClick()
+        gui_action(pyautogui.rightClick)
     else:
-        pyautogui.click()
-    time.sleep(0.2)
+        gui_action(pyautogui.click)
 
 
 def _handle_unknown_signer() -> None:
@@ -184,9 +182,8 @@ def _handle_unknown_signer() -> None:
                 close_count += 1
 
         if point is not None:
-            pyautogui.moveTo(point.x, point.y)
-            pyautogui.click()
-            time.sleep(0.2)
+            gui_action(pyautogui.moveTo, point.x, point.y)
+            gui_action(pyautogui.click)
             continue
         if time.time() >= deadline:
             raise RuntimeError(
@@ -217,17 +214,27 @@ def _open(path: Path) -> None:
 
 
 def _capture(result_path: Path) -> bytes:
-    pyautogui.screenshot(result_path, (1400, 0, 1920, 1080))
+    gui_action(
+        pyautogui.screenshot,
+        result_path,
+        (1400, 0, 1920, 1080),
+        check_popups=True,
+    )
     return result_path.read_bytes()
 
 
 def _capture2(result_path: Path) -> bytes:
-    pyautogui.screenshot(result_path, (0, 0, 1400, 1080))
+    gui_action(
+        pyautogui.screenshot,
+        result_path,
+        (0, 0, 1400, 1080),
+        check_popups=True,
+    )
     return result_path.read_bytes()
 
 
 def _cleanup() -> None:
-    pyautogui.hotkey("ctrl", "w", interval=0.2)
+    gui_action(pyautogui.hotkey, "ctrl", "w", interval=0.2)
     wait_for_img([IMG_DIR / "foxit_icon.png"], 30, callback=_handle_standard_popups)
 
 

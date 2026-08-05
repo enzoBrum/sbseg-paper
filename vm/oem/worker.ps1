@@ -201,37 +201,25 @@ function Run-Readers($Request) {
             "run", "--project", $repo, "python", "$repo\src\main.py",
             "run", $verifier.slug, "--mode", $Request.mode
         )
-        $succeeded = $false
         $attemptOutput = @()
         try {
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-                Write-Log "Starting verifier: $($verifier.slug) (attempt $attempt/3)"
-                # Keep this attempt's output in memory so a final HTTP error
-                # contains the useful Python failure instead of only exit code 1.
-                $ErrorActionPreference = "Continue"
-                $attemptOutput = @(
-                    & $uv @arguments 2>&1 | ForEach-Object {
-                        $line = "$_"
-                        Write-Log $line
-                        $line
-                    }
-                )
-                $verifierExitCode = $LASTEXITCODE
-                $ErrorActionPreference = "Stop"
-
-                if ($verifierExitCode -eq 0) {
-                    $succeeded = $true
-                    break
+            Write-Log "Starting verifier: $($verifier.slug)"
+            # Python owns retries. Keep the final output here only so the HTTP
+            # caller receives the actual failure instead of a bare exit code.
+            $ErrorActionPreference = "Continue"
+            $attemptOutput = @(
+                & $uv @arguments 2>&1 | ForEach-Object {
+                    $line = "$_"
+                    Write-Log $line
+                    $line
                 }
-                if ($attempt -lt 3) {
-                    Write-Log "$($verifier.slug) failed with exit code $verifierExitCode; retrying"
-                    Start-Sleep -Seconds 2
-                }
-            }
+            )
+            $verifierExitCode = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
 
-            if (-not $succeeded) {
+            if ($verifierExitCode -ne 0) {
                 $details = ($attemptOutput | Select-Object -Last 30) -join [Environment]::NewLine
-                throw "$($verifier.slug) verification failed after 3 attempts with exit code $verifierExitCode`n$details"
+                throw "$($verifier.slug) verification failed with exit code $verifierExitCode`n$details"
             }
         } finally {
             $ErrorActionPreference = "Stop"
@@ -265,11 +253,12 @@ Write-Host "SBSEG verifier worker listening on port 8765"
 # The API is deliberately single-threaded: prepare and run are synchronous, and
 # the host performs only one VM operation at a time.
 while ($true) {
-    $context = $listener.GetContext()
-    $method = $context.Request.HttpMethod
-    $path = $context.Request.Url.AbsolutePath.TrimEnd([char]"/")
-
+    $context = $null
     try {
+        $context = $listener.GetContext()
+        $method = $context.Request.HttpMethod
+        $path = $context.Request.Url.AbsolutePath.TrimEnd([char]"/")
+
         # Readiness also reports the desktop values checked by `vm start`.
         if ($method -eq "GET" -and $path -eq "/health") {
             $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -312,6 +301,14 @@ while ($true) {
             Send-Json $context 404 @{ ok = $false; error = "endpoint not found" }
         }
     } catch {
-        Send-Json $context 500 @{ ok = $false; error = $_.Exception.Message }
+        $message = $_.Exception.Message
+        Write-Warning $message
+        if ($null -ne $context) {
+            try {
+                Send-Json $context 500 @{ ok = $false; error = $message }
+            } catch {
+                Write-Warning "Could not send error response: $($_.Exception.Message)"
+            }
+        }
     }
 }
