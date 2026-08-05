@@ -1,0 +1,22 @@
+# Windows-VM assets (multi-GB disk images/installers, some sparse) —
+# unrelated to the library-verifier Docker image and must never enter the
+# build context. `vm/` holds the compose/automation source; `.vm/` holds the
+# persistent VM disk state.
+vm/
+.vm/
+
+# Python / uv artifacts — rebuilt inside the image.
+.venv/
+**/__pycache__/
+*.py[oc]
+
+# Java build output — the DSS jar is rebuilt fresh in the build stage.
+**/target/
+
+# VCS and editor/tooling metadata.
+.git/
+.claude/
+
+# Runtime scratch data — never baked into the image.
+src/screenshots/
+*.db
