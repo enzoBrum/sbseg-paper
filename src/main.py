@@ -58,6 +58,18 @@ GUI_VERIFIER_HELP = (
     f"GUI verifier slugs: {', '.join(sorted(GUI_VERIFIERS))}; or 'all'."
 )
 
+# One expected-invalid case that each automated verifier has historically
+# accepted. Foxit has no warning-free false acceptance, so it uses the closest
+# available result instead.
+FAST_TEST_IDS = {
+    "adobe": 50,
+    "foxit": 59,
+    "master_pdf_editor": 18,
+    "edge": 34,
+    "pyhanko": 2,
+    "dss": 55,
+}
+
 
 class Verifier(str, Enum):
     adobe = "adobe"
@@ -168,6 +180,9 @@ def vm_run(
     smoke: bool = typer.Option(
         False, "--smoke", help="Run only the three smoke tests."
     ),
+    fast: bool = typer.Option(
+        False, "--fast", help="Run one known false-acceptance case per verifier."
+    ),
     timeout: float = typer.Option(
         14400, "--timeout", min=1, help="Seconds to wait for the complete run."
     ),
@@ -175,7 +190,10 @@ def vm_run(
     """Run selected desktop verifiers in the interactive Windows guest."""
     from windows_vm.vm import run_vm
 
-    _vm_call(run_vm, targets, _vm_db_path(ctx), smoke, timeout)
+    if smoke and fast:
+        raise typer.BadParameter("--fast cannot be combined with --smoke")
+
+    _vm_call(run_vm, targets, _vm_db_path(ctx), smoke, fast, timeout)
     console.print("[green]VM verifier run complete.[/]")
 
 
@@ -222,6 +240,11 @@ def verify(
         "--smoke",
         help="Run only the 3 SMOKE_TEST_* tests instead of the full batch.",
     ),
+    fast: bool = typer.Option(
+        False,
+        "--fast",
+        help="Run one known false-acceptance case instead of the full batch.",
+    ),
 ) -> None:
     """Run every test in the DB through a verifier and record the results.
 
@@ -229,11 +252,25 @@ def verify(
     pyautogui and capture screenshots. Library verifiers (pyhanko, dss)
     POST each PDF to the service running on localhost:8080.
 
-    Use [cyan]--smoke[/] for a fast 3-test sanity check (SMOKE_TEST_1/2/3).
+    Use [cyan]--smoke[/] for a 3-test sanity check, or [cyan]--fast[/] for
+    one verifier-specific false-acceptance case.
     """
     from tester_scripts.tester import test
 
-    if smoke:
+    if smoke and fast:
+        raise typer.BadParameter("--fast cannot be combined with --smoke")
+
+    if fast:
+        if verifier.value not in FAST_TEST_IDS:
+            raise typer.BadParameter("--fast is only available for automated verifiers")
+        from modification_pipeline.model import ModificationTest
+
+        test_id = FAST_TEST_IDS[verifier.value]
+        console.print(
+            f"Starting [bold]{verifier.value}[/] run (fast test #{test_id})..."
+        )
+        test(verifier.value, where_clause=ModificationTest.id == test_id)
+    elif smoke:
         from modification_pipeline.model import ModificationTest
 
         console.print(f"Starting [bold]{verifier.value}[/] run (smoke tests only)...")

@@ -96,7 +96,9 @@ def prepare_vm(values: list[str], timeout: float) -> list[str]:
         return list(response.json().get("warnings", []))
 
 
-def run_vm(values: list[str], database: Path, smoke: bool, timeout: float) -> None:
+def run_vm(
+    values: list[str], database: Path, smoke: bool, fast: bool, timeout: float
+) -> None:
     """Run verifiers and directly replace the database with the result."""
     database = database.expanduser().resolve()
     if not database.is_file():
@@ -115,6 +117,7 @@ def run_vm(values: list[str], database: Path, smoke: bool, timeout: float) -> No
                 for slug in _targets(values)
             ],
             "smoke": smoke,
+            "fast": fast,
         },
         timeout=timeout,
     ) as response:

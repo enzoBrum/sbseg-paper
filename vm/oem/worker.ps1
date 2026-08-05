@@ -203,6 +203,9 @@ function Run-Readers($Request) {
             if ($Request.smoke) {
                 $arguments += "--smoke"
             }
+            if ($Request.fast) {
+                $arguments += "--fast"
+            }
             # Verifier commands can also write ordinary status output to
             # stderr; stream it and use the process exit code for failure.
             $ErrorActionPreference = "Continue"
