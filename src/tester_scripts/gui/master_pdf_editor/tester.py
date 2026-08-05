@@ -15,22 +15,26 @@ PROC: subprocess.Popen[bytes] | None = None
 
 def _open(path: Path) -> None:
     global PROC
+    if PROC is not None and PROC.poll() is None:
+        PROC.kill()
+        sleep(0.2)
     PROC = subprocess.Popen([_MASTER_PDF_EXE, str(path.absolute())])
 
 
 def _pre_capture1():
-    bt = wait_for_img([IMG_DIR / "sig_btn.png"], 30, (0, 100, 1920, 1080))
+    bt = wait_for_img([IMG_DIR / "sig_btn.png", IMG_DIR / "sig_btn-2.png"], 30, (0, 100, 1920, 1080))
     assert bt is not None
     pyautogui.moveTo(bt.x, bt.y)
     pyautogui.click()
     sleep(0.2)
-    pyautogui.moveTo(100, 205)
-    sleep(0.2)
+    bt = wait_for_img([IMG_DIR / "sig_identified.png"], 30)
+    pyautogui.moveTo(bt.x, bt.y)
     pyautogui.click()
     pyautogui.click()
 
 
 def _capture(result_path: Path) -> bytes:
+    sleep(0.8)
     pyautogui.screenshot(result_path)
     return result_path.read_bytes()
 
@@ -38,7 +42,9 @@ def _capture(result_path: Path) -> bytes:
 def _cleanup() -> None:
     pyautogui.press("esc")
     pyautogui.hotkey("ctrl", "w", interval=0.2)
-    wait_for_img([IMG_DIR / "trash.png"], 30)
+    sleep(0.2)
+    pyautogui.move(1, 1)
+    #wait_for_img([IMG_DIR / "trash.png"], 30)
 
 
 CONFIG = GuiReaderConfig(
@@ -46,7 +52,7 @@ CONFIG = GuiReaderConfig(
     slug="master_pdf_editor",
     open_pdf=_open,
     cleanup=_cleanup,
-    ready_images=[IMG_DIR / "sig_btn.png"],
+    ready_images=[IMG_DIR / "sig_btn.png", IMG_DIR / "sig_btn-2.png"],
     capture_layer_1=_capture,
     capture_layer_2=_capture,
     pre_capture_layer_1=_pre_capture1,

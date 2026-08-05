@@ -16,6 +16,7 @@ class Verifier:
     exe: str
     install_args: tuple[str, ...]
     installer_required: bool = True
+    installer_extension: str = ".exe"
 
 
 VERIFIERS = {
@@ -36,7 +37,8 @@ VERIFIERS = {
         exe=(
             r"C:\Program Files\Code Industry\Master PDF Editor 5\MasterPDFEditor.exe"
         ),
-        install_args=("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"),
+        install_args=("/qn", "/norestart"),
+        installer_extension=".msi",
     ),
     "edge": Verifier(
         version="148.0.3967.83",

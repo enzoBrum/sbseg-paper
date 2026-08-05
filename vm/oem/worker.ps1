@@ -124,10 +124,16 @@ function Install-Reader($Installer) {
         if (-not $Installer.available) {
             throw "installer was not supplied: $($Installer.slug)"
         }
-        $path = "$installerRoot\$($Installer.slug).exe"
+        $path = "$installerRoot\$($Installer.slug)$($Installer.installer_extension)"
+        $program = $path
+        $arguments = @($Installer.install_args)
+        if ($Installer.installer_extension -eq ".msi") {
+            $program = "msiexec.exe"
+            $arguments = @("/i", $path) + $arguments
+        }
         $process = Start-Process `
-            -FilePath $path `
-            -ArgumentList @($Installer.install_args) `
+            -FilePath $program `
+            -ArgumentList $arguments `
             -Wait `
             -PassThru
         if ($process.ExitCode -notin @(0, 1641, 3010)) {
@@ -258,12 +264,12 @@ while ($true) {
                 screen_height = $screen.Height
             }
         } elseif ($method -eq "PUT" -and $path.StartsWith("/installers/")) {
-            # Installer bodies are raw .exe bytes, one stable filename per slug.
-            $slug = $path.Substring("/installers/".Length)
-            if ($slug -notmatch "^[a-z_]+$") {
-                throw "invalid verifier name"
+            # Keep the extension because MSI packages must run through msiexec.
+            $name = $path.Substring("/installers/".Length)
+            if ($name -notmatch "^[a-z_]+\.(exe|msi)$") {
+                throw "invalid installer name"
             }
-            Save-Body $context.Request "$installerRoot\$slug.exe"
+            Save-Body $context.Request "$installerRoot\$name"
             Send-Json $context 200 @{ ok = $true; message = "installer uploaded"; warnings = @() }
         } elseif ($method -eq "PUT" -and $path -eq "/database") {
             # The next /run copies this raw SQLite file into the local repo.

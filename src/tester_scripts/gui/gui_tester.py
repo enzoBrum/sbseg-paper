@@ -2,6 +2,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+import traceback
 from typing import Callable
 
 import pyautogui
@@ -28,7 +29,7 @@ def wait_for_img(
     while time.time() < end:
         for img in paths:
             try:
-                print("MAtchiing")
+                print("MAtchiing: ", paths)
                 result = pyautogui.locateCenterOnScreen(
                     str(img), region=region, confidence=confidence
                 )
@@ -185,6 +186,7 @@ def run_gui_tester(config: GuiReaderConfig, where_clause=None) -> None:
                         config, t.id, t.fileblob
                     )
                 except Exception:
+                    traceback.print_exc()
                     pyautogui.hotkey("alt", "f4", interval=0.1)
                     time.sleep(5)
                     continue

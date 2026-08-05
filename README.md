@@ -18,7 +18,7 @@ uv run python src/main.py vm stop
 from the current registry.
 
 Place user-provided installers in `.vm/installers/` as `adobe.exe`, `foxit.exe`,
-`master_pdf_editor.exe`, or `edge.exe`. Edge can use the copy included with
+`master_pdf_editor.msi`, or `edge.exe`. Edge can use the copy included with
 Windows, so its installer is optional. A different installed version produces a
 warning.
 
