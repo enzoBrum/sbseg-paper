@@ -28,6 +28,7 @@ def wait_for_img(
     while time.time() < end:
         for img in paths:
             try:
+                print("MAtchiing")
                 result = pyautogui.locateCenterOnScreen(
                     str(img), region=region, confidence=confidence
                 )

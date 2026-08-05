@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+import traceback
+from typing import List, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from tester_scripts.gui.verifiers import REGISTRY as GUI_VERIFIERS
 
 from cli_render import (
     _agg_layer_glyph,
@@ -43,8 +45,18 @@ app = typer.Typer(
         "  uv run python src/main.py --db-path /tmp/x.db generate"
     ),
 )
+vm_app = typer.Typer(
+    help="Manage the Windows VM used by desktop GUI verifiers.",
+    no_args_is_help=True,
+)
+app.add_typer(vm_app, name="vm", rich_help_panel="Windows VM")
 
 console = Console()
+
+# Keep the VM command choices tied to the actual GUI verifier registry.
+GUI_VERIFIER_HELP = (
+    f"GUI verifier slugs: {', '.join(sorted(GUI_VERIFIERS))}; or 'all'."
+)
 
 
 class Verifier(str, Enum):
@@ -66,6 +78,7 @@ class Verifier(str, Enum):
 
 @app.callback()
 def setup(
+    ctx: typer.Context,
     db_path: Path = typer.Option(
         DEFAULT_DB,
         "--db-path",
@@ -76,9 +89,103 @@ def setup(
         show_default=False,
     ),
 ) -> None:
-    from modification_pipeline.model import init
+    ctx.ensure_object(dict)
+    ctx.obj["db_path"] = db_path
 
-    init(db_path)
+    # VM lifecycle commands do not need to open the research database.
+    if ctx.invoked_subcommand != "vm":
+        from modification_pipeline.model import init
+
+        init(db_path)
+
+
+def _vm_db_path(ctx: typer.Context) -> Path:
+    root = ctx.find_root()
+    assert isinstance(root.obj, dict)
+    return Path(root.obj["db_path"])
+
+
+def _vm_call(function, *args):
+    try:
+        return function(*args)
+    except Exception as error:
+        console.print(f"[red]VM error:[/] {error}\n{traceback.format_exc()}")
+        raise typer.Exit(1)
+
+
+@vm_app.command("create")
+def vm_create() -> None:
+    """Create or start the persistent Windows verifier VM."""
+    from windows_vm.vm import create_vm
+
+    _vm_call(create_vm)
+    console.print(
+        "[green]Windows VM started.[/] Installation/boot progress: "
+        "[link=http://127.0.0.1:8006]http://127.0.0.1:8006[/link]"
+    )
+
+
+@vm_app.command("init")
+def vm_init(
+    timeout: float = typer.Option(
+        1800,
+        "--timeout",
+        min=1,
+        help="Seconds to wait for unattended Windows setup and the guest worker.",
+    ),
+) -> None:
+    """Wait for Windows initialization and validate the interactive desktop."""
+    from windows_vm.vm import init_vm
+
+    ready = _vm_call(init_vm, timeout)
+    console.print(
+        f"[green]Windows guest ready.[/] user={ready.get('user')} "
+        f"display={ready.get('screen_width')}x{ready.get('screen_height')} "
+        f"dpi={ready.get('dpi')}"
+    )
+
+
+@vm_app.command("prepare", no_args_is_help=True)
+def vm_prepare(
+    targets: List[str] = typer.Argument(..., help=GUI_VERIFIER_HELP),
+    timeout: float = typer.Option(
+        3600, "--timeout", min=1, help="Seconds to wait for preparation."
+    ),
+) -> None:
+    """Install and configure selected desktop verifiers in Windows."""
+    from windows_vm.vm import prepare_vm
+
+    warnings = _vm_call(prepare_vm, targets, timeout)
+    for warning in warnings:
+        console.print(f"[yellow]Warning:[/] {warning}")
+    console.print("[green]VM preparation complete.[/]")
+
+
+@vm_app.command("run")
+def vm_run(
+    ctx: typer.Context,
+    targets: List[str] = typer.Argument(..., help=GUI_VERIFIER_HELP),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="Run only the three smoke tests."
+    ),
+    timeout: float = typer.Option(
+        14400, "--timeout", min=1, help="Seconds to wait for the complete run."
+    ),
+) -> None:
+    """Run selected desktop verifiers in the interactive Windows guest."""
+    from windows_vm.vm import run_vm
+
+    _vm_call(run_vm, targets, _vm_db_path(ctx), smoke, timeout)
+    console.print("[green]VM verifier run complete.[/]")
+
+
+@vm_app.command("stop")
+def vm_stop() -> None:
+    """Stop Windows while preserving its installed state and disk."""
+    from windows_vm.vm import stop_vm
+
+    _vm_call(stop_vm)
+    console.print("[green]Windows VM stopped; persistent state was retained.[/]")
 
 
 # ---------------------------------------------------------------------------

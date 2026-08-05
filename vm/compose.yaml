@@ -1,0 +1,32 @@
+services:
+  windows-verifiers:
+    image: dockurr/windows:6.03
+    container_name: sbseg-windows-verifiers
+    environment:
+      VERSION: "11"
+      LANGUAGE: "English"
+      REGION: "en-US"
+      KEYBOARD: "en-US"
+      USERNAME: "sbseg"
+      PASSWORD: "${SBSEG_VM_PASSWORD:-sbseg}"
+      RAM_SIZE: "${SBSEG_VM_RAM:-8G}"
+      CPU_CORES: "${SBSEG_VM_CPUS:-4}"
+      DISK_SIZE: "${SBSEG_VM_DISK:-96G}"
+      WIDTH: "1920"
+      HEIGHT: "1080"
+      # QEMU user networking needs an explicit guest API forward.
+      USER_PORTS: "8765"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "127.0.0.1:${SBSEG_VM_CONSOLE_PORT:-8006}:8006"
+      - "127.0.0.1:${SBSEG_VM_API_PORT:-8765}:8765"
+    volumes:
+      - ../.vm/storage:/storage
+      - ..:/shared
+      - ./oem:/oem:ro
+    restart: unless-stopped
+    stop_grace_period: 2m
