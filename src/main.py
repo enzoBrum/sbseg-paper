@@ -230,7 +230,10 @@ def run(
         targets = sorted(AUTOMATED_VERIFIERS)
     if not targets or "all" in targets or set(targets) - AUTOMATED_VERIFIERS:
         raise typer.BadParameter(AUTOMATED_VERIFIER_HELP)
-    targets = list(dict.fromkeys(targets))
+    # NOTE: not `list(...)` — the `list` CLI command defined below shadows
+    # the builtin at module scope, so a real `list()` call here would
+    # actually invoke the typer command instead.
+    targets = [*dict.fromkeys(targets)]
 
     local_targets = targets if os.name == "nt" else [
         target for target in targets if target in LIBRARY_VERIFIERS
