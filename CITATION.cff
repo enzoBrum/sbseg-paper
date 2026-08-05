@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated paper."
+title: "$1 Yacht Sale: Tampering with Signed PDFs in Plain Sight"
+type: software
+license: MIT
+abstract: >-
+  The Portable Document Format (PDF) is a popular way of sharing electronic
+  documents. It is a format used across fields to represent official
+  documents, many of which require strong guarantees that no unauthorized
+  modifications are made to their contents. Digital signatures can be used
+  to protect both the integrity and authenticity of a document, allowing an
+  entity, whether a person, business, or service, to testify to one specific
+  state of the document such that any non-permitted modification, for
+  example altering the value of a contract or a health prescription,
+  invalidates the signature. This repository accompanies a paper
+  introducing two novel attack classes that abuse flaws in the PDF
+  specification to visually modify a page of a signed document without
+  invalidating the signature or warning the user: Appearance Substitution
+  Attack (ASA) and Signature Field Duplication Attack (SFDA). The evaluation
+  found that 12 out of 15 tested GUI applications and 2 popular verification
+  libraries were at least partially vulnerable to one of the attack classes.
+authors:
+  - family-names: Brum
+    given-names: "Enzo R."
+  - family-names: Schardong
+    given-names: Frederico
+  - family-names: Custódio
+    given-names: Ricardo
+preferred-citation:
+  type: conference-paper
+  title: "$1 Yacht Sale: Tampering with Signed PDFs in Plain Sight"
+  authors:
+    - family-names: Brum
+      given-names: "Enzo R."
+    - family-names: Schardong
+      given-names: Frederico
+    - family-names: Custódio
+      given-names: Ricardo
+  year: 2026
+  conference:
+    name: "Simpósio Brasileiro de Segurança da Informação e de Sistemas Computacionais (SBSeg 2026)"

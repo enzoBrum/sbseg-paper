@@ -197,24 +197,44 @@ function Run-Readers($Request) {
         if (-not (Test-Path $verifier.exe)) {
             throw "$($verifier.slug) is not installed"
         }
-        Write-Log "Starting verifier: $($verifier.slug)"
+        $arguments = @(
+            "run", "--project", $repo, "python", "$repo\src\main.py",
+            "run", $verifier.slug, "--mode", $Request.mode
+        )
+        $succeeded = $false
+        $attemptOutput = @()
         try {
-            $arguments = @(
-                "run", "--project", $repo, "python", "$repo\src\main.py",
-                "run", $verifier.slug, "--mode", $Request.mode
-            )
-            # Verifier commands can also write ordinary status output to
-            # stderr; stream it and use the process exit code for failure.
-            $ErrorActionPreference = "Continue"
-            & $uv @arguments 2>&1 | ForEach-Object {
-                Write-Log "$_"
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                Write-Log "Starting verifier: $($verifier.slug) (attempt $attempt/3)"
+                # Keep this attempt's output in memory so a final HTTP error
+                # contains the useful Python failure instead of only exit code 1.
+                $ErrorActionPreference = "Continue"
+                $attemptOutput = @(
+                    & $uv @arguments 2>&1 | ForEach-Object {
+                        $line = "$_"
+                        Write-Log $line
+                        $line
+                    }
+                )
+                $verifierExitCode = $LASTEXITCODE
+                $ErrorActionPreference = "Stop"
+
+                if ($verifierExitCode -eq 0) {
+                    $succeeded = $true
+                    break
+                }
+                if ($attempt -lt 3) {
+                    Write-Log "$($verifier.slug) failed with exit code $verifierExitCode; retrying"
+                    Start-Sleep -Seconds 2
+                }
             }
-            $verifierExitCode = $LASTEXITCODE
-            $ErrorActionPreference = "Stop"
-            if ($verifierExitCode -ne 0) {
-                throw "$($verifier.slug) verification failed with exit code $verifierExitCode"
+
+            if (-not $succeeded) {
+                $details = ($attemptOutput | Select-Object -Last 30) -join [Environment]::NewLine
+                throw "$($verifier.slug) verification failed after 3 attempts with exit code $verifierExitCode`n$details"
             }
         } finally {
+            $ErrorActionPreference = "Stop"
             Write-Log "Verifier ended: $($verifier.slug)"
         }
     }

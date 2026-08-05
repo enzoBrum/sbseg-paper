@@ -120,7 +120,8 @@ def run_vm(
         },
         timeout=timeout,
     ) as response:
-        response.raise_for_status()
+        if not response.ok:
+            raise RuntimeError(response.json()["error"])
 
     with requests.get(f"{API_URL}/database", timeout=300) as response:
         response.raise_for_status()

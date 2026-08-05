@@ -22,14 +22,18 @@ PROC: subprocess.Popen[bytes] | None = None
 _POPUPS = [
     (
         POPUP_DIR / "always_open_dialog.png",
-        [[POPUP_DIR / "always_open_no.png"]],
+        [[POPUP_DIR / "always_open_yes.png"]],
     ),
     (
         POPUP_DIR / "always_open_alt_dialog.png",
         [
             [POPUP_DIR / "always_open_alt_checkbox.png"],
-            [POPUP_DIR / "always_open_alt_no.png"],
+            [POPUP_DIR / "always_open_yes.png"],
         ],
+    ),
+    (
+        POPUP_DIR / "windows_default_app_dialog.png",
+        [[POPUP_DIR / "windows_default_app_set.png"]],
     ),
     (
         POPUP_DIR / "free_trial_dialog.png",
@@ -98,8 +102,9 @@ def _handle_popups() -> None:
                 if point is None:
                     # Escape may dismiss a dialog whose rendering no longer
                     # matches its captured button state.
+                    time.sleep(0.5)
                     pyautogui.press("esc")
-                    time.sleep(0.2)
+                    time.sleep(0.5)
                     dialog = _find_dialog(dialog_path)
                     if dialog is None:
                         break
@@ -115,9 +120,10 @@ def _handle_popups() -> None:
                             f"Could not dismiss Adobe popup: {dialog_path.name}"
                         )
 
+                time.sleep(0.5)
                 pyautogui.moveTo(point.x, point.y)
                 pyautogui.click()
-                time.sleep(0.2)
+                time.sleep(0.5)
             break
 
         if not handled:

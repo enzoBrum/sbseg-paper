@@ -11,3 +11,8 @@ wheels/
 
 # Local Windows VM storage and proprietary installers.
 .vm/
+
+# Ad hoc scratch/debug output — not part of the project.
+/tmp.db
+/Screenshot *.png
+/masterpdf-tmp/

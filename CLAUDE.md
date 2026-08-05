@@ -51,13 +51,19 @@ uv run python src/main.py run pyhanko   # gunicorn starts and stops automaticall
 uv run python src/main.py run dss       # java -jar starts and stops automatically
 ```
 
-**DSS prerequisite (one-time):** The jar must be built and committed before first use:
+**DSS prerequisite (one-time):** A pre-built jar
+(`target/demo-0.0.1-SNAPSHOT.jar`) is already present on disk so native
+`run dss` works out of the box, but `target/` is git-ignored — it is not
+committed, so a fresh clone needs to rebuild it. There is no `mvnw` wrapper
+in this directory; use a system Maven:
 
 ```bash
 cd src/tester_scripts/library/dss
-./mvnw -q package -DskipTests
-# git add target/demo-0.0.1-SNAPSHOT.jar && git commit
+mvn -q package -DskipTests
 ```
+
+The Docker image (see `Dockerfile`) builds this jar from source
+automatically and needs neither Java nor Maven on the host.
 
 To add a new library verifier, subclass `LibraryVerifier` in
 `src/tester_scripts/library/verifiers.py` and add it to `REGISTRY`.
