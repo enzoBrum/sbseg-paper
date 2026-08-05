@@ -76,7 +76,7 @@ def prepare_vm(values: list[str], timeout: float) -> list[str]:
     installers: list[dict[str, Any]] = []
     for slug in _targets(values):
         spec = VERIFIERS[slug]
-        source = INSTALLER_CACHE / f"{slug}.exe"
+        source = INSTALLER_CACHE / (f"{slug}.exe" if slug != "master_pdf_editor" else f"{slug}.msi")
         available = source.is_file()
         if not available and spec.installer_required:
             raise RuntimeError(f"Missing installer: {source}")
