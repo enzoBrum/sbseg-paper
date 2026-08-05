@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pyautogui
 
-from tester_scripts.gui.gui_tester import GuiReaderConfig, wait_for_img
+from tester_scripts.gui.gui_tester import (
+    GuiReaderConfig,
+    open_maximized,
+    wait_for_img,
+)
 
 IMG_DIR = Path(__file__).parent / "imgs"
 POPUP_DIR = IMG_DIR / "popups"
@@ -209,7 +213,7 @@ def _handle_popups() -> None:
 
 def _open(path: Path) -> None:
     global PROC
-    PROC = subprocess.Popen([_FOXIT_EXE, str(path.absolute())])
+    PROC = open_maximized(_FOXIT_EXE, path)
 
 
 def _capture(result_path: Path) -> bytes:

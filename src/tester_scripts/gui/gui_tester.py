@@ -1,3 +1,4 @@
+import subprocess
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -15,6 +16,17 @@ PAGE_SIZE = 32
 RETRIES = 10
 
 _EVAL_MISS_RETRIES = 2
+_SW_MAXIMIZE = 3
+
+
+def open_maximized(executable: str, document: Path) -> subprocess.Popen[bytes]:
+    """Open a Windows desktop verifier with an initially maximized window."""
+    startup = subprocess.STARTUPINFO()
+    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.wShowWindow = _SW_MAXIMIZE
+    return subprocess.Popen(
+        [executable, str(document.absolute())], startupinfo=startup
+    )
 
 
 def wait_for_img(
@@ -108,6 +120,9 @@ def _execute_reader(
         print("WAIT READY")
         wait_for_img(config.ready_images, 60, callback=handle_popups)
         handle_popups()
+        # Single-instance applications can ignore the startup window state.
+        pyautogui.hotkey("win", "up", interval=0.1)
+        time.sleep(0.2)
 
         if config.pre_capture_layer_1 is not None:
             print("PRE 1")

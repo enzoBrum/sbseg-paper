@@ -25,8 +25,20 @@ while ($true) {
     try {
         Copy-Item -Force $sharedWorker $localWorker
         Write-Host "Starting SBSEG verifier worker"
-        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $localWorker
-        Write-Warning "SBSEG verifier worker exited with code $LASTEXITCODE"
+        # Start the worker in its own visible console. This supervisor remains
+        # hidden, waits for that process, and restarts it when it exits.
+        $worker = Start-Process `
+            -FilePath "powershell.exe" `
+            -ArgumentList @(
+                "-NoLogo",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", $localWorker
+            ) `
+            -WindowStyle Normal `
+            -PassThru
+        $worker.WaitForExit()
+        Write-Warning "SBSEG verifier worker exited with code $($worker.ExitCode)"
     } catch {
         Write-Warning "Could not start SBSEG verifier worker: $($_.Exception.Message)"
     }

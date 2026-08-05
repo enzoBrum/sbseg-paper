@@ -4,7 +4,11 @@ from time import sleep
 
 import pyautogui
 
-from tester_scripts.gui.gui_tester import GuiReaderConfig, wait_for_img
+from tester_scripts.gui.gui_tester import (
+    GuiReaderConfig,
+    open_maximized,
+    wait_for_img,
+)
 
 IMG_DIR = Path(__file__).parent / "imgs"
 _MASTER_PDF_EXE = (
@@ -18,7 +22,7 @@ def _open(path: Path) -> None:
     if PROC is not None and PROC.poll() is None:
         PROC.kill()
         sleep(0.2)
-    PROC = subprocess.Popen([_MASTER_PDF_EXE, str(path.absolute())])
+    PROC = open_maximized(_MASTER_PDF_EXE, path)
 
 
 def _pre_capture1():
