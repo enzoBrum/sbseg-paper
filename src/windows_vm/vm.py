@@ -97,7 +97,7 @@ def prepare_vm(values: list[str], timeout: float) -> list[str]:
 
 
 def run_vm(
-    values: list[str], database: Path, smoke: bool, fast: bool, timeout: float
+    values: list[str], database: Path, mode: str, timeout: float
 ) -> None:
     """Run verifiers and directly replace the database with the result."""
     database = database.expanduser().resolve()
@@ -116,8 +116,7 @@ def run_vm(
                 {"slug": slug, "exe": VERIFIERS[slug].exe}
                 for slug in _targets(values)
             ],
-            "smoke": smoke,
-            "fast": fast,
+            "mode": mode,
         },
         timeout=timeout,
     ) as response:

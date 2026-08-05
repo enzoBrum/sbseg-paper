@@ -19,23 +19,26 @@ uv run python src/main.py --db-path /tmp/x.db generate
 
 ```bash
 uv run python src/main.py generate               # generate all test cases → DB
-uv run python src/main.py verify adobe           # run full batch through a verifier
-uv run python src/main.py analyze                # evaluate screenshots, show stats
-uv run python src/main.py analyze --verifier adobe  # stats for one verifier only
+uv run python src/main.py run adobe              # desktop verifier runs in Windows VM
+uv run python src/main.py run pyhanko adobe --mode fast
+uv run python src/main.py list --verifier adobe --disagree
 ```
 
 ### Inspect subcommands
 
 ```bash
-uv run python src/main.py list                   # table of all persisted tests
-uv run python src/main.py show 42                # chain + verdicts for test #42
-uv run python src/main.py save 42                # write test #42 PDF to cwd/42.pdf
-uv run python src/main.py save 42 --out /tmp/t.pdf
+uv run python src/main.py list                   # pruned result matrix
+uv run python src/main.py db export 42           # write test #42 PDF to cwd/42.pdf
+uv run python src/main.py db export 42 --out /tmp/t.pdf
+uv run python src/main.py db dump adobe          # export disagreement artifacts
 ```
 
 ### Verifiers
 
-`verify` accepts: `adobe`, `foxit`, `libreoffice`, `pyhanko`, `dss`. The library tester passes the verifier name as `VerifierTest.name`.
+`run` accepts one or more of `adobe`, `foxit`, `master_pdf_editor`, `edge`,
+`pyhanko`, and `dss`, or `all`. On Linux, desktop verifiers route to the VM and
+library verifiers run locally. The library tester passes the verifier name as
+`VerifierTest.name`.
 
 ### Library verifiers (PyHanko, DSS)
 
@@ -44,8 +47,8 @@ server before testing and stops it (including all child processes) after. No man
 startup is needed:
 
 ```bash
-uv run python src/main.py verify pyhanko   # gunicorn starts and stops automatically
-uv run python src/main.py verify dss       # java -jar starts and stops automatically
+uv run python src/main.py run pyhanko   # gunicorn starts and stops automatically
+uv run python src/main.py run dss       # java -jar starts and stops automatically
 ```
 
 **DSS prerequisite (one-time):** The jar must be built and committed before first use:
@@ -157,8 +160,8 @@ tester_scripts/
 ### CLI entry point (`src/main.py`)
 
 ```
-src/main.py    # typer app; --db-path global option; subcommands: generate, verify,
-               # analyze, list, show, save
+src/main.py    # typer app; --db-path global option; commands: generate, run,
+               # list, vm, db
 ```
 
 ### Certificates

@@ -6,16 +6,16 @@ Desktop verifiers can run in a persistent Windows VM using Docker, Dockur, and
 KVM. The workflow is:
 
 ```bash
-uv run python src/main.py vm create
-uv run python src/main.py vm init
-uv run python src/main.py vm prepare adobe
-uv run python src/main.py vm run adobe --smoke
+uv run python src/main.py vm start
+uv run python src/main.py vm setup adobe
+uv run python src/main.py run adobe --mode smoke
 uv run python src/main.py vm stop
 ```
 
-`prepare` and `run` accept multiple verifier names or `all`. Run
-`uv run python src/main.py vm prepare --help` to list the GUI verifier slugs
-from the current registry.
+`setup` accepts multiple desktop verifier names or `all`. The root `run`
+command also accepts multiple verifier names or `all`; desktop verifiers are
+sent to the VM automatically, while library verifiers run locally. Run
+`uv run python src/main.py vm setup --help` to list the GUI verifier slugs.
 
 Place user-provided installers in `.vm/installers/` as `adobe.exe`, `foxit.exe`,
 `master_pdf_editor.msi`, or `edge.exe`. Edge can use the copy included with

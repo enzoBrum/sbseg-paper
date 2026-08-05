@@ -1,8 +1,8 @@
 """Web verifiers are tested manually via the browser.
 
 There is no automation; results are entered with
-`main.py enter-web-result <slug> <test_id> --valid|--no-valid
-[--warn-modified|--no-warn-modified]`.
+`main.py db record-web <slug> <test_id> --l1-valid|--no-l1-valid
+--l2-valid|--no-l2-valid`.
 """
 from dataclasses import dataclass
 

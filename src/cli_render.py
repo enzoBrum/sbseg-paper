@@ -6,30 +6,7 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 
-from modification_pipeline.model import ChainItemSpec, ModificationTest, VerifierTest
-
-
-def _chain_params(ci: ChainItemSpec) -> str:
-    name = ci.item_name or ""
-    if name == "CreateSignature":
-        fields = [
-            "field_mdp_action",
-            "field_mdp_include_sigfield",
-            "include_adobe_p",
-            "mdp_perms",
-            "certify",
-            "stamp_enable",
-            "signer_idx",
-            "sig_field_name",
-        ]
-    elif name == "ASA":
-        fields = ["place_on_different_page", "target_page_index"]
-    elif name == "SFDA":
-        fields = ["sig_field_name", "place_on_different_page", "target_page_index"]
-    else:
-        fields = []
-    parts = [f"        [cyan]{f}[/cyan]={getattr(ci, f)}" for f in fields]
-    return ("\n".join(parts)) if parts else ""
+from modification_pipeline.model import ModificationTest, VerifierTest
 
 
 def _layer_glyph(result: Optional[bool], warn_modified: Optional[bool]) -> str:
@@ -48,168 +25,50 @@ def _matrix_cell(vt: Optional[VerifierTest]) -> str:
     )
 
 
+def _has_result(vt: Optional[VerifierTest]) -> bool:
+    return vt is not None and (
+        vt.result_layer_1 is not None or vt.result_layer_2 is not None
+    )
+
+
 def _algorithm1_params(t: ModificationTest) -> dict:
-    for a in t.associations:
-        if a.chain_item.item_name == "CreateSignature":
-            add_sig = a.chain_item
-            break
-    else:
-        raise ValueError(f"test #{t.id} has no CreateSignature chain item")
-    change_page = any(
-        a.chain_item.item_name in ("ASA", "SFDA")
-        and a.chain_item.place_on_different_page is True
+    add_sig = next(
+        a.chain_item
         for a in t.associations
+        if a.chain_item.item_name == "CreateSignature"
     )
     return {
         "mdp": add_sig.mdp_perms,
         "cert": add_sig.certify,
         "prot": add_sig.field_mdp_include_sigfield,
         "stamp": add_sig.stamp_enable,
-        "chgpg": change_page,
+        "chgpg": any(
+            a.chain_item.item_name in ("ASA", "SFDA")
+            and a.chain_item.place_on_different_page is True
+            for a in t.associations
+        ),
     }
 
 
-def _agg_layer_glyph(vts: list[VerifierTest], expected: bool, layer: int) -> str:
-    result_attr = f"result_layer_{layer}"
-    warn_attr = f"warn_modified_layer_{layer}"
-    tested = [v for v in vts if getattr(v, result_attr) is not None]
-    if not tested:
-        return "[dim]-[/]"
-    has_f = any(not getattr(v, result_attr) for v in tested)
-    has_w = any(getattr(v, result_attr) and getattr(v, warn_attr) for v in tested)
-    if has_f:
-        return "[red]F[/]"
-    if has_w:
-        return "[yellow]W[/]"
-    return "[green]T[/]"
-
-
 def _layer_disagrees(vt: VerifierTest, expected: bool, layer: int) -> bool:
-    r = getattr(vt, f"result_layer_{layer}")
-    w = getattr(vt, f"warn_modified_layer_{layer}")
-    if r is None:
+    result = getattr(vt, f"result_layer_{layer}")
+    warning = getattr(vt, f"warn_modified_layer_{layer}")
+    if result is None:
         return False
-    return r != expected or (r and bool(w))
+    return result != expected or (result and bool(warning))
 
 
-def _is_disagreement_layered(t: ModificationTest, verifier_name: Optional[str]) -> bool:
-    vts = [a.verifier_test for a in t.tested_verifiers_assoc]
+def _is_disagreement_layered(
+    test: ModificationTest, verifier_name: Optional[str]
+) -> bool:
+    results = [a.verifier_test for a in test.tested_verifiers_assoc]
     if verifier_name is not None:
-        focal = next((v for v in vts if v.name == verifier_name), None)
-        if focal is None:
-            return False
-        return _layer_disagrees(focal, t.expected_result, 1) or _layer_disagrees(
-            focal, t.expected_result, 2
-        )
+        results = [result for result in results if result.name == verifier_name]
     return any(
-        _layer_disagrees(v, t.expected_result, 1)
-        or _layer_disagrees(v, t.expected_result, 2)
-        for v in vts
+        _layer_disagrees(result, test.expected_result, 1)
+        or _layer_disagrees(result, test.expected_result, 2)
+        for result in results
     )
-
-
-def _rank_tuple(vt: VerifierTest) -> Optional[tuple[int, int]]:
-    def _prio(result: Optional[bool], warn: Optional[bool]) -> int:
-        if result is None:
-            return 0
-        if result and warn:
-            return 1
-        return 0 if result else 2
-
-    if vt.result_layer_1 is None and vt.result_layer_2 is None:
-        return None
-    return (
-        _prio(vt.result_layer_1, vt.warn_modified_layer_1),
-        _prio(vt.result_layer_2, vt.warn_modified_layer_2),
-    )
-
-
-def _params_string(t: ModificationTest) -> str:
-    p = _algorithm1_params(t)
-
-    def _b(v: Optional[bool]) -> str:
-        if v is None:
-            return "-"
-        return "T" if v else "F"
-
-    def _mdp(v: Optional[int]) -> str:
-        return "None" if v is None else str(v)
-
-    return (
-        f"id={t.id} mdp={_mdp(p['mdp'])} cert={_b(p['cert'])} "
-        f"prot={_b(p['prot'])} stamp={_b(p['stamp'])} chgpg={_b(p['chgpg'])}"
-    )
-
-
-def _render_sum_matrix(
-    rows: Sequence[ModificationTest],
-    all_slugs: list[str],
-    console: Console,
-    verifier_meta: dict[str, tuple[str | None, str | None, str | None]] | None = None,
-) -> None:
-    attacks = ("ASA", "SFDA")
-    buckets: dict[
-        str,
-        dict[str, list[tuple[tuple[int, int], int, VerifierTest, ModificationTest]]],
-    ] = {slug: {a: [] for a in attacks} for slug in all_slugs}
-
-    for t in rows:
-        if t.attack_name not in attacks:
-            continue
-        for assoc in t.tested_verifiers_assoc:
-            vt = assoc.verifier_test
-            if vt.name not in buckets:
-                continue
-            rank = _rank_tuple(vt)
-            if rank is None:
-                continue
-            buckets[vt.name][t.attack_name].append((rank, t.id, vt, t))
-
-    show_url = verifier_meta is not None and any(
-        url for _, _, url in verifier_meta.values()
-    )
-
-    table = Table(title="Best ASA / SFDA per verifier")
-    table.add_column("verifier")
-    table.add_column("category", style="dim")
-    table.add_column("version", style="dim")
-    if show_url:
-        table.add_column("web-url", style="dim")
-    table.add_column("ASA")
-    table.add_column("SFDA")
-
-    for slug in all_slugs:
-        best_per_attack: dict[
-            str, tuple[Optional[VerifierTest], Optional[ModificationTest]]
-        ] = {}
-        for attack in attacks:
-            entries = buckets[slug][attack]
-            if not entries:
-                best_per_attack[attack] = (None, None)
-            else:
-                entries.sort(key=lambda e: (e[0], e[1]))
-                _, _, vt, t = entries[0]
-                best_per_attack[attack] = (vt, t)
-
-        asa_vt, asa_t = best_per_attack["ASA"]
-        sfda_vt, sfda_t = best_per_attack["SFDA"]
-
-        category, version, url = verifier_meta.get(slug, (None, None, None)) if verifier_meta else (None, None, None)
-
-        row_values = [
-            slug,
-            category or "[dim]-[/]",
-            version or "[dim]-[/]",
-        ]
-        if show_url:
-            row_values.append(url or "[dim]-[/]")
-        row_values += [
-            _matrix_cell(asa_vt) if asa_vt is not None else "[dim]-[/]",
-            _matrix_cell(sfda_vt) if sfda_vt is not None else "[dim]-[/]",
-        ]
-        table.add_row(*row_values)
-
-    console.print(table)
 
 
 def _render_matrix(
@@ -219,20 +78,48 @@ def _render_matrix(
     all_slugs: list[str],
     console: Console,
 ) -> None:
-    def _b(v: Optional[bool]) -> str:
-        if v is None:
-            return "-"
-        return "T" if v else "F"
+    prepared: list[tuple[ModificationTest, dict[str, VerifierTest]]] = []
+    for test in rows:
+        results = {
+            association.verifier_test.name: association.verifier_test
+            for association in test.tested_verifiers_assoc
+        }
+        visible = (
+            [results.get(verifier_name)]
+            if verifier_name is not None
+            else list(results.values())
+        )
+        if not any(_has_result(result) for result in visible):
+            continue
+        if disagree and not _is_disagreement_layered(test, verifier_name):
+            continue
+        prepared.append((test, results))
 
-    def _mdp(v: Optional[int]) -> str:
-        return "None" if v is None else str(v)
+    if verifier_name is not None:
+        slugs = [verifier_name]
+    else:
+        slugs = [
+            slug
+            for slug in all_slugs
+            if any(_has_result(results.get(slug)) for _, results in prepared)
+        ]
 
-    title = (
-        "Tests (matrix)"
-        if verifier_name is None
-        else f"Tests (matrix) — {verifier_name}"
+    if not prepared or not slugs:
+        if disagree:
+            suffix = f" for '{verifier_name}'" if verifier_name else ""
+            console.print(f"[green]No disagreements{suffix}.[/]")
+        else:
+            suffix = f" for '{verifier_name}'" if verifier_name else ""
+            console.print(f"[yellow]No recorded results{suffix}.[/]")
+        return
+
+    table = Table(
+        title=(
+            "Tests"
+            if verifier_name is None
+            else f"Tests — {verifier_name}"
+        )
     )
-    table = Table(title=title)
     table.add_column("id", style="dim")
     table.add_column("attack")
     table.add_column("mdp")
@@ -241,61 +128,37 @@ def _render_matrix(
     table.add_column("stamp")
     table.add_column("chgpg")
     table.add_column("expected")
-
+    for slug in slugs:
+        table.add_column(slug)
     if verifier_name is not None:
-        table.add_column(verifier_name)
         table.add_column("match")
-    else:
-        for slug in all_slugs:
-            table.add_column(slug)
 
-    shown = 0
-    for t in rows:
-        if disagree and not _is_disagreement_layered(t, verifier_name):
-            continue
+    def boolean(value: Optional[bool]) -> str:
+        if value is None:
+            return "-"
+        return "T" if value else "F"
 
-        params = _algorithm1_params(t)
+    for test, results in prepared:
+        params = _algorithm1_params(test)
         row = [
-            str(t.id),
-            t.attack_name or "-",
-            _mdp(params["mdp"]),
-            _b(params["cert"]),
-            _b(params["prot"]),
-            _b(params["stamp"]),
-            _b(params["chgpg"]),
-            "valid" if t.expected_result else "invalid",
+            str(test.id),
+            test.attack_name or "-",
+            "None" if params["mdp"] is None else str(params["mdp"]),
+            boolean(params["cert"]),
+            boolean(params["prot"]),
+            boolean(params["stamp"]),
+            boolean(params["chgpg"]),
+            "valid" if test.expected_result else "invalid",
         ]
-
-        vt_by_name = {
-            a.verifier_test.name: a.verifier_test for a in t.tested_verifiers_assoc
-        }
-
+        row.extend(_matrix_cell(results.get(slug)) for slug in slugs)
         if verifier_name is not None:
-            vt = vt_by_name.get(verifier_name)
-            row.append(_matrix_cell(vt))
-            if vt is None:
-                row.append("[dim]-[/]")
-            else:
-                l1_dis = _layer_disagrees(vt, t.expected_result, 1)
-                l2_dis = _layer_disagrees(vt, t.expected_result, 2)
-                has_any = vt.result_layer_1 is not None or vt.result_layer_2 is not None
-                if l1_dis or l2_dis:
-                    row.append("[yellow]disagree[/]")
-                elif has_any:
-                    row.append("[green]agree[/]")
-                else:
-                    row.append("[dim]-[/]")
-        else:
-            for slug in all_slugs:
-                row.append(_matrix_cell(vt_by_name.get(slug)))
-
+            result = results[verifier_name]
+            mismatch = _layer_disagrees(
+                result, test.expected_result, 1
+            ) or _layer_disagrees(result, test.expected_result, 2)
+            row.append(
+                "[yellow]disagree[/]" if mismatch else "[green]agree[/]"
+            )
         table.add_row(*row)
-        shown += 1
 
     console.print(table)
-    if disagree:
-        if shown == 0:
-            suffix = f" for '{verifier_name}'" if verifier_name else ""
-            console.print(f"[green]No disagreements{suffix}.[/]")
-        else:
-            console.print(f"[dim]{shown} disagreement(s).[/]")

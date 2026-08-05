@@ -199,13 +199,10 @@ function Run-Readers($Request) {
         }
         Write-Log "Starting verifier: $($verifier.slug)"
         try {
-            $arguments = @("run", "--project", $repo, "python", "$repo\src\main.py", "verify", $verifier.slug)
-            if ($Request.smoke) {
-                $arguments += "--smoke"
-            }
-            if ($Request.fast) {
-                $arguments += "--fast"
-            }
+            $arguments = @(
+                "run", "--project", $repo, "python", "$repo\src\main.py",
+                "run", $verifier.slug, "--mode", $Request.mode
+            )
             # Verifier commands can also write ordinary status output to
             # stderr; stream it and use the process exit code for failure.
             $ErrorActionPreference = "Continue"
@@ -253,7 +250,7 @@ while ($true) {
     $path = $context.Request.Url.AbsolutePath.TrimEnd([char]"/")
 
     try {
-        # Readiness also reports the desktop values checked by `vm init`.
+        # Readiness also reports the desktop values checked by `vm start`.
         if ($method -eq "GET" -and $path -eq "/health") {
             $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
             $dpi = (Get-ItemProperty "HKCU:\Control Panel\Desktop" -Name LogPixels).LogPixels

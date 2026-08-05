@@ -77,7 +77,7 @@ class GuiReaderConfig:
     # screenshot directory names and surfaced in the UI/reports.
     display_name: str
     # CLI identifier — the registry key and Verifier.name column value,
-    # e.g. "adobe". Used by `verify <slug>` and to look up the FK to the
+    # e.g. "adobe". Used by `run <slug>` and to look up the FK to the
     # seeded Verifier row. Must match the entry in gui/verifiers.REGISTRY.
     slug: str
     open_pdf: Callable[[Path], None]

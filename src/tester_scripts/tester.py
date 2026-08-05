@@ -18,7 +18,7 @@ def test(name: str, where_clause=None) -> None:
     if name in _WEB_REGISTRY:
         raise ValueError(
             f"{name!r} is a web verifier (tested manually). "
-            f"Use `main.py enter-web-result {name} <test_id> "
+            f"Use `main.py db record-web {name} <test_id> "
             "--l1-valid|--no-l1-valid [--l1-warn] "
             "--l2-valid|--no-l2-valid [--l2-warn]`."
         )

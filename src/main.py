@@ -3,25 +3,20 @@
 from __future__ import annotations
 
 from enum import Enum
+import os
 from pathlib import Path
 import traceback
 from typing import List, Optional
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 from tester_scripts.gui.verifiers import REGISTRY as GUI_VERIFIERS
+from tester_scripts.library.verifiers import REGISTRY as LIBRARY_VERIFIERS
 
 from cli_render import (
-    _agg_layer_glyph,
-    _chain_params,
     _is_disagreement_layered,
     _layer_disagrees,
-    _layer_glyph,
-    _matrix_cell,
     _render_matrix,
-    _render_sum_matrix,
 )
 
 DEFAULT_DB = Path(__file__).parent / "signed_files.db"
@@ -31,17 +26,14 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode="rich",
     epilog=(
-        "[bold]Typical flow:[/] [cyan]generate[/] → [cyan]verify <verifier>[/] → [cyan]analyze[/]\n\n"
+        "[bold]Typical flow:[/] [cyan]generate[/] → [cyan]run <verifier>[/] → [cyan]list[/]\n\n"
         "[bold]Examples:[/]\n\n"
         "  uv run python src/main.py generate\n\n"
-        "  uv run python src/main.py verify adobe\n\n"
-        "  uv run python src/main.py analyze\n\n"
-        "  uv run python src/main.py analyze --verifier adobe\n\n"
+        "  uv run python src/main.py run adobe --mode fast\n\n"
+        "  uv run python src/main.py run pyhanko adobe --mode smoke\n\n"
         "  uv run python src/main.py list\n\n"
         "  uv run python src/main.py list --verifier adobe --disagree\n\n"
-        "  uv run python src/main.py list --matrix --disagree\n\n"
-        "  uv run python src/main.py list --sum-matrix\n\n"
-        "  uv run python src/main.py save 42 --out /tmp/test.pdf\n\n"
+        "  uv run python src/main.py db export 42 --out /tmp/test.pdf\n\n"
         "  uv run python src/main.py --db-path /tmp/x.db generate"
     ),
 )
@@ -49,13 +41,23 @@ vm_app = typer.Typer(
     help="Manage the Windows VM used by desktop GUI verifiers.",
     no_args_is_help=True,
 )
+db_app = typer.Typer(
+    help="Export and manage persisted database results.",
+    no_args_is_help=True,
+)
 app.add_typer(vm_app, name="vm", rich_help_panel="Windows VM")
+app.add_typer(db_app, name="db", rich_help_panel="Database")
 
 console = Console()
 
 # Keep the VM command choices tied to the actual GUI verifier registry.
 GUI_VERIFIER_HELP = (
     f"GUI verifier slugs: {', '.join(sorted(GUI_VERIFIERS))}; or 'all'."
+)
+AUTOMATED_VERIFIERS = frozenset(GUI_VERIFIERS) | frozenset(LIBRARY_VERIFIERS)
+AUTOMATED_VERIFIER_HELP = (
+    f"Automated verifier slugs: {', '.join(sorted(AUTOMATED_VERIFIERS))}; "
+    "or 'all'."
 )
 
 # One expected-invalid case that each automated verifier has historically
@@ -88,6 +90,12 @@ class Verifier(str, Enum):
     clicksign = "clicksign"
 
 
+class RunMode(str, Enum):
+    full = "full"
+    fast = "fast"
+    smoke = "smoke"
+
+
 @app.callback()
 def setup(
     ctx: typer.Context,
@@ -111,7 +119,7 @@ def setup(
         init(db_path)
 
 
-def _vm_db_path(ctx: typer.Context) -> Path:
+def _db_path(ctx: typer.Context) -> Path:
     root = ctx.find_root()
     assert isinstance(root.obj, dict)
     return Path(root.obj["db_path"])
@@ -125,20 +133,8 @@ def _vm_call(function, *args):
         raise typer.Exit(1)
 
 
-@vm_app.command("create")
-def vm_create() -> None:
-    """Create or start the persistent Windows verifier VM."""
-    from windows_vm.vm import create_vm
-
-    _vm_call(create_vm)
-    console.print(
-        "[green]Windows VM started.[/] Installation/boot progress: "
-        "[link=http://127.0.0.1:8006]http://127.0.0.1:8006[/link]"
-    )
-
-
-@vm_app.command("init")
-def vm_init(
+@vm_app.command("start")
+def vm_start(
     timeout: float = typer.Option(
         1800,
         "--timeout",
@@ -146,9 +142,14 @@ def vm_init(
         help="Seconds to wait for unattended Windows setup and the guest worker.",
     ),
 ) -> None:
-    """Wait for Windows initialization and validate the interactive desktop."""
-    from windows_vm.vm import init_vm
+    """Start the persistent VM and wait for its interactive desktop."""
+    from windows_vm.vm import create_vm, init_vm
 
+    _vm_call(create_vm)
+    console.print(
+        "[green]Windows VM started.[/] Installation/boot progress: "
+        "[link=http://127.0.0.1:8006]http://127.0.0.1:8006[/link]"
+    )
     ready = _vm_call(init_vm, timeout)
     console.print(
         f"[green]Windows guest ready.[/] user={ready.get('user')} "
@@ -157,8 +158,8 @@ def vm_init(
     )
 
 
-@vm_app.command("prepare", no_args_is_help=True)
-def vm_prepare(
+@vm_app.command("setup", no_args_is_help=True)
+def vm_setup(
     targets: List[str] = typer.Argument(..., help=GUI_VERIFIER_HELP),
     timeout: float = typer.Option(
         3600, "--timeout", min=1, help="Seconds to wait for preparation."
@@ -170,31 +171,7 @@ def vm_prepare(
     warnings = _vm_call(prepare_vm, targets, timeout)
     for warning in warnings:
         console.print(f"[yellow]Warning:[/] {warning}")
-    console.print("[green]VM preparation complete.[/]")
-
-
-@vm_app.command("run")
-def vm_run(
-    ctx: typer.Context,
-    targets: List[str] = typer.Argument(..., help=GUI_VERIFIER_HELP),
-    smoke: bool = typer.Option(
-        False, "--smoke", help="Run only the three smoke tests."
-    ),
-    fast: bool = typer.Option(
-        False, "--fast", help="Run one known false-acceptance case per verifier."
-    ),
-    timeout: float = typer.Option(
-        14400, "--timeout", min=1, help="Seconds to wait for the complete run."
-    ),
-) -> None:
-    """Run selected desktop verifiers in the interactive Windows guest."""
-    from windows_vm.vm import run_vm
-
-    if smoke and fast:
-        raise typer.BadParameter("--fast cannot be combined with --smoke")
-
-    _vm_call(run_vm, targets, _vm_db_path(ctx), smoke, fast, timeout)
-    console.print("[green]VM verifier run complete.[/]")
+    console.print("[green]VM setup complete.[/]")
 
 
 @vm_app.command("stop")
@@ -217,7 +194,7 @@ def generate() -> None:
 
     Sweeps the full parameter space from Algorithm 1 (mdp_level ×
     is_cert_sig × is_field_protected × is_stamp × change_page) and writes
-    one [ModificationTest] row per pipeline. Run this before [cyan]verify[/].
+    one [ModificationTest] row per pipeline. Run this before [cyan]run[/].
     """
     from rich.progress import track
 
@@ -229,58 +206,57 @@ def generate() -> None:
     console.print(f"[green]Done.[/] {len(cases)} test cases generated.")
 
 
-@app.command(rich_help_panel="Workflow")
-def verify(
-    verifier: Verifier = typer.Argument(
-        ...,
-        help="PDF verifier to run the full test batch through.",
+@app.command(rich_help_panel="Workflow", no_args_is_help=True)
+def run(
+    ctx: typer.Context,
+    targets: List[str] = typer.Argument(..., help=AUTOMATED_VERIFIER_HELP),
+    mode: RunMode = typer.Option(
+        RunMode.full,
+        "--mode",
+        help="Test selection: full batch, verifier-specific fast case, or smoke tests.",
     ),
-    smoke: bool = typer.Option(
-        False,
-        "--smoke",
-        help="Run only the 3 SMOKE_TEST_* tests instead of the full batch.",
-    ),
-    fast: bool = typer.Option(
-        False,
-        "--fast",
-        help="Run one known false-acceptance case instead of the full batch.",
+    timeout: float = typer.Option(
+        14400,
+        "--timeout",
+        min=1,
+        help="Seconds to wait when desktop verifiers run in the VM.",
     ),
 ) -> None:
-    """Run every test in the DB through a verifier and record the results.
-
-    GUI verifiers (adobe, foxit, etc) drive the reader via
-    pyautogui and capture screenshots. Library verifiers (pyhanko, dss)
-    POST each PDF to the service running on localhost:8080.
-
-    Use [cyan]--smoke[/] for a 3-test sanity check, or [cyan]--fast[/] for
-    one verifier-specific false-acceptance case.
-    """
+    """Run one or more desktop or library verifiers."""
+    from modification_pipeline.model import ModificationTest
     from tester_scripts.tester import test
 
-    if smoke and fast:
-        raise typer.BadParameter("--fast cannot be combined with --smoke")
+    if targets == ["all"]:
+        targets = sorted(AUTOMATED_VERIFIERS)
+    if not targets or "all" in targets or set(targets) - AUTOMATED_VERIFIERS:
+        raise typer.BadParameter(AUTOMATED_VERIFIER_HELP)
+    targets = list(dict.fromkeys(targets))
 
-    if fast:
-        if verifier.value not in FAST_TEST_IDS:
-            raise typer.BadParameter("--fast is only available for automated verifiers")
-        from modification_pipeline.model import ModificationTest
+    local_targets = targets if os.name == "nt" else [
+        target for target in targets if target in LIBRARY_VERIFIERS
+    ]
+    vm_targets = [] if os.name == "nt" else [
+        target for target in targets if target in GUI_VERIFIERS
+    ]
 
-        test_id = FAST_TEST_IDS[verifier.value]
-        console.print(
-            f"Starting [bold]{verifier.value}[/] run (fast test #{test_id})..."
-        )
-        test(verifier.value, where_clause=ModificationTest.id == test_id)
-    elif smoke:
-        from modification_pipeline.model import ModificationTest
+    for target in local_targets:
+        where_clause = None
+        description = "full batch"
+        if mode == RunMode.fast:
+            test_id = FAST_TEST_IDS[target]
+            where_clause = ModificationTest.id == test_id
+            description = f"fast test #{test_id}"
+        elif mode == RunMode.smoke:
+            where_clause = ModificationTest.attack_name.like("SMOKE_TEST_%")
+            description = "smoke tests"
+        console.print(f"Starting [bold]{target}[/] run ({description})...")
+        test(target, where_clause=where_clause)
 
-        console.print(f"Starting [bold]{verifier.value}[/] run (smoke tests only)...")
-        test(
-            verifier.value,
-            where_clause=ModificationTest.attack_name.like("SMOKE_TEST_%"),
-        )
-    else:
-        console.print(f"Starting [bold]{verifier.value}[/] run (full batch)...")
-        test(verifier.value)
+    if vm_targets:
+        from windows_vm.vm import run_vm
+
+        _vm_call(run_vm, vm_targets, _db_path(ctx), mode.value, timeout)
+        console.print("[green]VM verifier run complete.[/]")
 
 
 # ---------------------------------------------------------------------------
@@ -294,268 +270,37 @@ def list(
         None,
         "--verifier",
         "-v",
-        help="Show verdict for this verifier; add result/match columns.",
+        help="Show only this verifier and add its match column.",
     ),
     disagree: bool = typer.Option(
         False,
         "--disagree",
         "-d",
-        help="Print one panel per disagreement with full chain and all verifier results.",
-    ),
-    matrix: bool = typer.Option(
-        False,
-        "--matrix",
-        "-m",
-        help="Wide table: Algorithm-1 params + one column per verifier (filterable with --disagree).",
-    ),
-    extras: bool = typer.Option(
-        False,
-        "--extras",
-        "-x",
-        help="Show only the EXTRA_P1/P2/P3 DocMDP probe tests in a simple table.",
-    ),
-    sum_matrix: bool = typer.Option(
-        False,
-        "--sum-matrix",
-        "-s",
-        help="One row per verifier with the best-ranked ASA and SFDA outcome and its params.",
+        help="Show only tests whose recorded result disagrees with the expected result.",
     ),
 ) -> None:
-    """List all persisted tests with their attack type and current verdicts.
-
-    Without flags: prints a summary table (EXTRA_P* tests hidden).
-    With [cyan]--verifier[/]: adds result and match columns for that verifier.
-    With [cyan]--disagree[/]: prints one panel per failing test showing the full
-    modification chain and all verifier results. Combine with [cyan]--verifier[/]
-    to restrict panels to tests that disagree with a specific verifier.
-    With [cyan]--matrix[/]: wide table with one row per test, columns for every
-    Algorithm-1 parameter (mdp, cert, prot, stamp, chgpg) and one column per
-    verifier. Combine with [cyan]--disagree[/] to filter rows to disagreements,
-    and [cyan]--verifier[/] to narrow verifier columns to a single focal one
-    plus a match column.
-    With [cyan]--extras[/]: simple table showing only the three DocMDP probe tests.
-    With [cyan]--sum-matrix[/]: one row per verifier, showing the best-ranked
-    ASA and SFDA outcome (rank order TT>TW>TF>WT>WW>WF>FT>FW>FF, missing
-    layer ignored) and the params of the winning test. Mutually exclusive with
-    the other flags.
-    """
+    """Show recorded test results as a matrix."""
     from sqlalchemy import select
 
     from modification_pipeline.model import ModificationTest, get_session
 
-    if sum_matrix and (matrix or extras or disagree or verifier is not None):
-        console.print(
-            "[red]--sum-matrix cannot be combined with "
-            "--matrix, --extras, --disagree, or --verifier.[/]"
-        )
-        raise typer.Exit(1)
-
     with get_session() as session:
-        if extras:
-            stmt = (
-                select(ModificationTest)
-                .where(ModificationTest.attack_name.like("EXTRA_%"))
-                .order_by(ModificationTest.id)
-            )
-        elif sum_matrix:
-            stmt = (
-                select(ModificationTest)
-                .where(ModificationTest.attack_name.in_(["ASA", "SFDA"]))
-                .order_by(ModificationTest.id)
-            )
-        else:
-            stmt = (
-                select(ModificationTest)
-                .where(~ModificationTest.attack_name.like("EXTRA_%"))
-                .order_by(ModificationTest.id)
-            )
-        rows = session.execute(stmt).scalars().all()
-
-        if sum_matrix:
-            from modification_pipeline.model import Verifier as VerifierRow
-            v_rows = session.execute(select(VerifierRow)).scalars().all()
-            meta = {r.name: (r.category, r.version, r.url) for r in v_rows}
-            _render_sum_matrix(rows, [v.value for v in Verifier], console, verifier_meta=meta)
-            return
-
-        if extras:
-            all_slugs = [v.value for v in Verifier]
-            table = Table(title="DocMDP Probe Tests")
-            table.add_column("id", style="dim")
-            table.add_column("attack")
-            table.add_column("expected")
-            for slug in all_slugs:
-                table.add_column(slug)
-            table.add_column("match")
-
-            for t in rows:
-                expected_str = "valid" if t.expected_result else "invalid"
-                vt_by_name = {
-                    a.verifier_test.name: a.verifier_test
-                    for a in t.tested_verifiers_assoc
-                }
-                any_tested = bool(vt_by_name)
-                any_disagree = any(
-                    _layer_disagrees(vt, t.expected_result, 1)
-                    or _layer_disagrees(vt, t.expected_result, 2)
-                    for vt in vt_by_name.values()
-                )
-                if not any_tested:
-                    match_str = "[dim]-[/]"
-                elif any_disagree:
-                    match_str = "[red]F[/]"
-                else:
-                    match_str = "[green]T[/]"
-
-                row = [str(t.id), t.attack_name or "-", expected_str]
-                for slug in all_slugs:
-                    row.append(_matrix_cell(vt_by_name.get(slug)))
-                row.append(match_str)
-                table.add_row(*row)
-
-            console.print(table)
-            return
-
-        if matrix:
-            _render_matrix(
-                rows,
-                verifier.value if verifier else None,
-                disagree,
-                [v.value for v in Verifier],
-                console,
-            )
-            return
-
-        focal_name = verifier.value if verifier else None
-
-        if not disagree:
-            title = "Tests" if verifier is None else f"Tests — {verifier.value}"
-            table = Table(title=title)
-            table.add_column("id", style="dim")
-            table.add_column("attack")
-            table.add_column("expected")
-            if verifier is not None:
-                table.add_column("L1")
-                table.add_column("L2")
-                table.add_column("match")
-            else:
-                table.add_column("tested", justify="right")
-                table.add_column("L1", justify="center")
-                table.add_column("L2", justify="center")
-
-            for t in rows:
-                expected_str = "valid" if t.expected_result else "invalid"
-                if verifier is not None:
-                    vt = next(
-                        (
-                            a.verifier_test
-                            for a in t.tested_verifiers_assoc
-                            if a.verifier_test.name == verifier.value
-                        ),
-                        None,
-                    )
-                    l1_str = _layer_glyph(
-                        vt.result_layer_1 if vt else None,
-                        vt.warn_modified_layer_1 if vt else None,
-                    )
-                    l2_str = _layer_glyph(
-                        vt.result_layer_2 if vt else None,
-                        vt.warn_modified_layer_2 if vt else None,
-                    )
-                    if vt is None:
-                        match_str = "[dim]-[/]"
-                    else:
-                        l1_dis = _layer_disagrees(vt, t.expected_result, 1)
-                        l2_dis = _layer_disagrees(vt, t.expected_result, 2)
-                        has_any = (
-                            vt.result_layer_1 is not None
-                            or vt.result_layer_2 is not None
-                        )
-                        if l1_dis or l2_dis:
-                            match_str = "[red]F[/]"
-                        elif has_any:
-                            match_str = "[green]T[/]"
-                        else:
-                            match_str = "[dim]-[/]"
-                    table.add_row(
-                        str(t.id),
-                        t.attack_name or "-",
-                        expected_str,
-                        l1_str,
-                        l2_str,
-                        match_str,
-                    )
-                else:
-                    vts = [a.verifier_test for a in t.tested_verifiers_assoc]
-                    l1_str = _agg_layer_glyph(vts, t.expected_result, 1)
-                    l2_str = _agg_layer_glyph(vts, t.expected_result, 2)
-                    table.add_row(
-                        str(t.id),
-                        t.attack_name or "-",
-                        expected_str,
-                        str(len(vts)) if vts else "[dim]0[/]",
-                        l1_str,
-                        l2_str,
-                    )
-
-            console.print(table)
-            return
-
-        # --disagree: one panel per failing test
-        count = 0
-        for t in rows:
-            if not _is_disagreement_layered(t, focal_name):
-                continue
-
-            all_vts = [a.verifier_test for a in t.tested_verifiers_assoc]
-
-            expected_display = (
-                "[green]valid[/]" if t.expected_result else "[red]invalid[/]"
-            )
-            lines: list[str] = [f"expected: {expected_display}"]  # type: ignore
-
-            if verifier is not None:
-                focal = next(vt for vt in all_vts if vt.name == verifier.value)
-                l1 = _layer_glyph(focal.result_layer_1, focal.warn_modified_layer_1)
-                l2 = _layer_glyph(focal.result_layer_2, focal.warn_modified_layer_2)
-                lines.append(f"result:   L1 {l1}  L2 {l2}")
-
-            if all_vts:
-                lines += ["", "verifiers:"]
-                for vt in sorted(all_vts, key=lambda v: v.name):
-                    l1 = _layer_glyph(vt.result_layer_1, vt.warn_modified_layer_1)
-                    l2 = _layer_glyph(vt.result_layer_2, vt.warn_modified_layer_2)
-                    lines.append(f"  {vt.name:<16} L1 {l1}  L2 {l2}")
-
-            chain_lines: list[str] = []  # type: ignore
-            for a in sorted(t.associations, key=lambda a: a.chain_item.idx):
-                ci = a.chain_item
-                chain_lines.append(f"  {ci.idx}. {ci.item_name}")
-                params = _chain_params(ci)
-                if params:
-                    chain_lines.append(params)
-
-            lines += ["", "chain:"]
-            lines += chain_lines if chain_lines else ["  (none)"]
-
-            console.print(
-                Panel(
-                    "\n".join(lines),
-                    title=f"[bold]#{t.id}[/] {t.attack_name or ''}",
-                    expand=False,
-                )
-            )
-            count += 1
-
-        if count == 0:
-            suffix = f" for '{focal_name}'" if focal_name else ""
-            console.print(f"[green]No disagreements{suffix}.[/]")
-        else:
-            console.print(f"[dim]{count} disagreement(s).[/]")
+        rows = (
+            session.execute(select(ModificationTest).order_by(ModificationTest.id))
+            .scalars()
+            .all()
+        )
+        _render_matrix(
+            rows,
+            verifier.value if verifier else None,
+            disagree,
+            [item.value for item in Verifier],
+            console,
+        )
 
 
-@app.command("enter-web-result", rich_help_panel="Workflow")
-def enter_web_result(
+@db_app.command("record-web")
+def db_record_web(
     verifier: Verifier = typer.Argument(
         ..., help="Web verifier slug (web-category verifiers only)."
     ),
@@ -584,8 +329,7 @@ def enter_web_result(
     """Manually record a result from a web verifier (no automation).
 
     Web verifiers are tested in a browser; this command persists one verdict
-    into the DB so it shows up in [cyan]list[/] / [cyan]analyze[/] alongside
-    automated verifiers.
+    into the DB so it shows up in [cyan]list[/] alongside automated verifiers.
     """
     from sqlalchemy import select
 
@@ -607,7 +351,7 @@ def enter_web_result(
         if v_row.category != "web":
             console.print(
                 f"[red]'{verifier.value}' is not a web verifier "
-                f"(category={v_row.category!r}). Use `verify` instead.[/]"
+                f"(category={v_row.category!r}). Use `run` instead.[/]"
             )
             raise typer.Exit(1)
 
@@ -637,8 +381,8 @@ def enter_web_result(
     )
 
 
-@app.command("set-verifier-version", rich_help_panel="Workflow")
-def set_verifier_version(
+@db_app.command("version")
+def db_version(
     verifier: Verifier = typer.Argument(..., help="Verifier slug."),
     version: str = typer.Argument(..., help="Version string to store (e.g. '6.3')."),
 ) -> None:
@@ -659,8 +403,8 @@ def set_verifier_version(
     console.print(f"Set [bold]{verifier.value}[/] version → [cyan]{version}[/].")
 
 
-@app.command(rich_help_panel="Inspect")
-def save(
+@db_app.command("export")
+def db_export(
     test_id: int = typer.Argument(
         ..., help="ID of the test whose PDF to save (see [cyan]list[/])."
     ),
@@ -686,8 +430,8 @@ def save(
     console.print(f"Wrote [cyan]{dest}[/]")
 
 
-@app.command("dump-failures", rich_help_panel="Inspect")
-def dump_failures(
+@db_app.command("dump")
+def db_dump(
     verifier: Verifier = typer.Argument(
         ..., help="Verifier slug whose disagreements to dump."
     ),
@@ -710,7 +454,6 @@ def dump_failures(
     """
     from sqlalchemy import select
 
-    from cli_render import _is_disagreement_layered, _layer_disagrees
     from modification_pipeline.model import ModificationTest, get_session
 
     slug = verifier.value
@@ -782,8 +525,8 @@ def dump_failures(
     console.print(f"Dumped [bold]{count}[/] failing test(s) to [cyan]{out / slug}[/].")
 
 
-@app.command("clear-verifier", rich_help_panel="Workflow")
-def clear_verifier(
+@db_app.command("clear")
+def db_clear(
     verifier: Verifier = typer.Argument(
         ..., help="Verifier slug whose results to delete."
     ),
