@@ -199,7 +199,8 @@ function Run-Readers($Request) {
         }
         $arguments = @(
             "run", "--project", $repo, "python", "$repo\src\main.py",
-            "run", $verifier.slug, "--mode", $Request.mode
+            "run", $verifier.slug, "--mode", $Request.mode,
+            "--action-delay", $Request.action_delay
         )
         $attemptOutput = @()
         try {

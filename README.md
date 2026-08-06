@@ -354,6 +354,16 @@ guaranteed to match the paper on reader versions other than those
 originally tested, since vendors change verification behavior between
 releases.
 
+> **GUI automation is best-effort.** Unattended completion is not guaranteed.
+> Adobe Reader/Acrobat in particular can display many installation-, account-,
+> trial-, update-, default-app-, and state-dependent popups, especially shortly
+> after installation. The scripts attempt to dismiss known dialogs through
+> screenshot matching, but cannot reliably map every possible popup. Vendor UI
+> and application-version updates may also invalidate the supplied image
+> templates. If automation becomes blocked, inspect the VM, dismiss the unknown
+> popup manually, and retry the verifier. These limitations apply only to the
+> optional GUI path, not the headless pyHanko and DSS workflow.
+
 Because the reader installers are proprietary and cannot be redistributed,
 you must supply your own. Place them in `.vm/installers/`, git ignored,
 named exactly `adobe.exe`, `foxit.exe`, `master_pdf_editor.msi`, and
@@ -364,14 +374,16 @@ warning rather than an error.
 ```bash
 uv run python src/main.py vm start            # boot the persistent Windows VM
 uv run python src/main.py vm setup adobe      # install/configure a reader, accepts several names or 'all'
-uv run python src/main.py run adobe --mode smoke   # desktop verifiers are routed to the VM automatically
+uv run python src/main.py run adobe --mode smoke --action-delay 0.5   # routed to the VM automatically
 uv run python src/main.py vm stop             # stop, retaining installed state
 ```
 
 `vm setup` and `run` accept multiple GUI slugs or `all`. On Linux, desktop
 verifiers are sent to the VM automatically while library verifiers run
-locally. Run `uv run python src/main.py vm setup --help` for the exact slug
-list. Installation and boot progress is viewable at
+locally. `--action-delay` controls the seconds waited both before and after
+each desktop GUI action; it defaults to `0.15` and does not affect library
+verifiers. Run `uv run python src/main.py vm setup --help` for the exact
+slug list. Installation and boot progress is viewable at
 `http://127.0.0.1:8006`, the guest worker exposes a local HTTP API on
 `127.0.0.1:${SBSEG_VM_API_PORT:-8765}`.
 

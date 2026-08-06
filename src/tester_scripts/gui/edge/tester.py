@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from time import sleep
 
 import pyautogui
 
@@ -35,7 +36,7 @@ def _capture(result_path: Path) -> bytes:
 
 def _cleanup() -> None:
     gui_action(pyautogui.hotkey, "ctrl", "w", interval=0.2)
-    wait_for_img([IMG_DIR / "sbar.png"], 30)
+    sleep(0.2)
 
 
 CONFIG = GuiReaderConfig(

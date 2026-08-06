@@ -13,11 +13,13 @@ from tester_scripts.gui.gui_tester import (
 
 IMG_DIR = Path(__file__).parent / "imgs"
 POPUP_DIR = IMG_DIR / "popups"
+SETUP_DIR = IMG_DIR / "setup"
 
 _FOXIT_EXE = r"C:\Program Files\Foxit Software\Foxit PDF Reader\FoxitPDFReader.exe"
 
 PROC: subprocess.Popen[bytes] | None = None
 _HANDLING_UNKNOWN_SIGNER = False
+_SETUP_DONE = False
 
 # Locate each ordinary popup across the desktop, then restrict its action
 # searches to that dialog. This keeps generic controls such as OK and X safe.
@@ -208,8 +210,85 @@ def _handle_popups() -> None:
         _HANDLING_UNKNOWN_SIGNER = False
 
 
+def _kill_foxit() -> None:
+    global PROC
+    subprocess.run(
+        ["taskkill", "/F", "/IM", "FoxitPDFReader.exe"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    PROC = None
+
+
+def _setup() -> None:
+    global PROC, _SETUP_DONE
+    PROC = open_maximized(_FOXIT_EXE)
+    try:
+        _click_when_visible([SETUP_DIR / "file.png"], "File")
+        _click_when_visible([SETUP_DIR / "preferences.png"], "Preferences")
+        _click_when_visible([SETUP_DIR / "search.png"], "preferences search")
+        gui_action(pyautogui.write, "Signature")
+
+        deadline = time.time() + 30
+        search_results = None
+        while time.time() < deadline:
+            search_results = _find_dialog(
+                SETUP_DIR / "signature_search_results.png"
+            )
+            if search_results is not None:
+                break
+            _handle_standard_popups()
+            time.sleep(0.2)
+        if search_results is None:
+            raise RuntimeError("Could not find Foxit signature search results")
+
+        region = (
+            search_results.left,
+            search_results.top,
+            search_results.width,
+            search_results.height,
+        )
+        point = _find_action([SETUP_DIR / "signature.png"], region)
+        if point is None:
+            raise RuntimeError("Could not find Signature in Foxit search results")
+        gui_action(pyautogui.moveTo, point.x, point.y)
+        gui_action(pyautogui.click)
+        _click_when_visible(
+            [SETUP_DIR / "change_settings.png"], "change signature settings"
+        )
+
+        deadline = time.time() + 30
+        time.sleep(1)
+        while time.time() < deadline:
+            if _find_action([SETUP_DIR / "already_validating.png"]) is not None:
+                break
+            point = _find_action([SETUP_DIR / "validating_signatures.png"])
+            if point is not None:
+                gui_action(pyautogui.moveTo, point.x, point.y)
+                gui_action(pyautogui.click)
+                _click_when_visible(
+                    [SETUP_DIR / "validating_certified.png"],
+                    "validate certified documents",
+                )
+                break
+            _handle_standard_popups()
+            time.sleep(0.2)
+        else:
+            raise RuntimeError("Could not find Foxit signature validation settings")
+
+        ok_images = [SETUP_DIR / "ok.png", SETUP_DIR / "ok-2.png"]
+        _click_when_visible(ok_images, "signature settings OK")
+        _click_when_visible(ok_images, "preferences OK")
+        _SETUP_DONE = True
+    finally:
+        _kill_foxit()
+
+
 def _open(path: Path) -> None:
     global PROC
+    if not _SETUP_DONE:
+        _setup()
     PROC = open_maximized(_FOXIT_EXE, path)
 
 
@@ -221,6 +300,21 @@ def _capture(result_path: Path) -> bytes:
         check_popups=True,
     )
     return result_path.read_bytes()
+
+
+def _pre_capture2() -> None:
+    panel = IMG_DIR / "ready/digital_signatures_panel.png"
+    if _find_action([panel]) is not None:
+        return
+    _click_when_visible(
+        [IMG_DIR / "ready/signature_panel.png"], "signature panel"
+    )
+    wait_for_img(
+        [panel],
+        30,
+        callback=_handle_standard_popups,
+        confidence=0.8,
+    )
 
 
 def _capture2(result_path: Path) -> bytes:
@@ -245,7 +339,8 @@ CONFIG = GuiReaderConfig(
     cleanup=_cleanup,
     ready_images=list(Path(IMG_DIR / "layer_1").iterdir()),
     capture_layer_1=_capture,
-    capture_layer_2=_capture2,  # stub: reuse L1 screenshot
+    capture_layer_2=_capture2,
+    pre_capture_layer_2=_pre_capture2,
     handle_popups=_handle_popups,
     imgs_dir=IMG_DIR,
     reference_imgs={

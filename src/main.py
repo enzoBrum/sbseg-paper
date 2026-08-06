@@ -215,6 +215,12 @@ def run(
         "--mode",
         help="Test selection: full batch, verifier-specific fast case, or smoke tests.",
     ),
+    action_delay: float = typer.Option(
+        0.05,
+        "--action-delay",
+        min=0,
+        help="Seconds before and after each desktop GUI action.",
+    ),
     timeout: float = typer.Option(
         14400,
         "--timeout",
@@ -242,6 +248,13 @@ def run(
         target for target in targets if target in GUI_VERIFIERS
     ]
 
+    if os.name == "nt" and any(
+        target in GUI_VERIFIERS for target in local_targets
+    ):
+        from tester_scripts.gui.gui_tester import set_action_delay
+
+        set_action_delay(action_delay)
+
     for target in local_targets:
         where_clause = None
         description = "full batch"
@@ -258,7 +271,17 @@ def run(
     if vm_targets:
         from windows_vm.vm import run_vm
 
-        _vm_call(run_vm, vm_targets, _db_path(ctx), mode.value, timeout)
+        console.print(
+            f"Desktop action delay: {action_delay:g}s before and after each action."
+        )
+        _vm_call(
+            run_vm,
+            vm_targets,
+            _db_path(ctx),
+            mode.value,
+            action_delay,
+            timeout,
+        )
         console.print("[green]VM verifier run complete.[/]")
 
 

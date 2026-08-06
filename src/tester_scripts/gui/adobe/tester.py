@@ -40,6 +40,10 @@ _POPUPS = [
         [[POPUP_DIR / "free_trial_close.png"]],
     ),
     (
+        POPUP_DIR / "sign_in_dialog.png",
+        [[POPUP_DIR / "sign_in_close.png"]],
+    ),
+    (
         POPUP_DIR / "reopen_closed_pdfs_dialog.png",
         [[POPUP_DIR / "reopen_closed_pdfs_no_thanks.png"]],
     ),

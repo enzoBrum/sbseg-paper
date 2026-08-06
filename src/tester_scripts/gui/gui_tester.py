@@ -17,9 +17,15 @@ RETRIES = 10
 
 _EVAL_MISS_RETRIES = 2
 _SW_MAXIMIZE = 3
-_ACTION_DELAY = 0.5
+_ACTION_DELAY = 0.05
 _POPUP_HANDLER: Callable[[], None] | None = None
 _CHECKING_POPUPS = False
+_READER_EXECUTABLE: str | None = None
+
+
+def set_action_delay(seconds: float) -> None:
+    global _ACTION_DELAY
+    _ACTION_DELAY = seconds
 
 
 def _check_popups() -> None:
@@ -46,14 +52,84 @@ def gui_action(action, *args, check_popups: bool = False, **kwargs):
     return result
 
 
-def open_maximized(executable: str, document: Path) -> subprocess.Popen[bytes]:
+def open_maximized(
+    executable: str, document: Path | None = None
+) -> subprocess.Popen[bytes]:
     """Open a Windows desktop verifier with an initially maximized window."""
+    global _READER_EXECUTABLE
+    _READER_EXECUTABLE = Path(executable).name.casefold()
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = _SW_MAXIMIZE
-    return subprocess.Popen(
-        [executable, str(document.absolute())], startupinfo=startup
+    arguments = [executable]
+    if document is not None:
+        arguments.append(str(document.absolute()))
+    return subprocess.Popen(arguments, startupinfo=startup)
+
+
+def _maximize_reader_window() -> None:
+    """Maximize the reader window even when it reused an existing process."""
+    import ctypes
+    from ctypes import wintypes
+
+    import psutil
+
+    if _READER_EXECUTABLE is None:
+        raise RuntimeError("Reader executable was not recorded")
+
+    user32 = ctypes.windll.user32
+    callback_type = ctypes.WINFUNCTYPE(
+        wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
     )
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.GetWindowThreadProcessId.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    user32.GetWindowRect.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.RECT),
+    ]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    windows: list[tuple[int, int]] = []
+
+    def collect(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        try:
+            process_name = psutil.Process(pid.value).name().casefold()
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+            return True
+        if process_name != _READER_EXECUTABLE:
+            return True
+
+        rect = wintypes.RECT()
+        if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            area = max(0, rect.right - rect.left) * max(
+                0, rect.bottom - rect.top
+            )
+            if area:
+                windows.append((area, hwnd))
+        return True
+
+    user32.EnumWindows(callback_type(collect), 0)
+    if not windows:
+        raise RuntimeError(
+            f"Could not find a visible window for {_READER_EXECUTABLE}"
+        )
+
+    hwnd = max(windows)[1]
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.ShowWindow(hwnd, _SW_MAXIMIZE)
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(_ACTION_DELAY)
 
 
 def wait_for_img(
@@ -146,14 +222,9 @@ def _execute_reader(
         print("WAIT READY")
         wait_for_img(config.ready_images, 60, callback=handle_popups)
         handle_popups()
-        # Single-instance applications can ignore the startup window state.
-        gui_action(
-            pyautogui.hotkey,
-            "win",
-            "up",
-            interval=0.1,
-            check_popups=True,
-        )
+        # Single-instance applications can ignore the startup window state,
+        # so maximize their actual top-level window instead of relying on focus.
+        _maximize_reader_window()
 
         if config.pre_capture_layer_1 is not None:
             print("PRE 1")
