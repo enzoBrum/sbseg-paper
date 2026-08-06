@@ -19,7 +19,9 @@ from cli_render import (
     _render_matrix,
 )
 
-DEFAULT_DB = Path(__file__).parent / "signed_files.db"
+DEFAULT_DB = Path(
+    os.environ.get("SBSEG_DB_PATH", Path(__file__).parent / "signed_files.db")
+)
 
 app = typer.Typer(
     help="Test PDF signature-field attack vectors across multiple verifiers.",
@@ -266,7 +268,11 @@ def run(
             where_clause = ModificationTest.attack_name.like("SMOKE_TEST_%")
             description = "smoke tests"
         console.print(f"Starting [bold]{target}[/] run ({description})...")
-        test(target, where_clause=where_clause)
+        try:
+            test(target, where_clause=where_clause)
+        except Exception as error:
+            console.print(f"[red]{target} failed:[/] {error}")
+            raise typer.Exit(1)
 
     if vm_targets:
         from windows_vm.vm import run_vm

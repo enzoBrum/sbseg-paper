@@ -1,4 +1,3 @@
-import traceback
 from concurrent.futures import Future, as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 from io import BytesIO
@@ -26,7 +25,7 @@ def run_test(
             files={"file": stream},
             timeout=30,
         )
-    assert response.status_code == 200
+    response.raise_for_status()
     return modification_test, response.json()
 
 
@@ -38,9 +37,10 @@ def test(name: str, where_clause=None):
     print(f"{name} version: {verifier.version or 'unknown'}")
 
     with modification_pipeline.model.get_session() as session:
-        total = session.execute(
-            select(count()).select_from(ModificationTest)
-        ).scalar_one()
+        count_query = select(count()).select_from(ModificationTest)
+        if where_clause is not None:
+            count_query = count_query.where(where_clause)
+        total = session.execute(count_query).scalar_one()
 
     pbar = tqdm.tqdm(total=total)
 
@@ -56,17 +56,14 @@ def test(name: str, where_clause=None):
                 results = []
                 for fut in as_completed(futs):
                     pbar.update()
-                    try:
-                        _, payload = fut.result()
-                        t = futs[fut]
-                        results.append((t, VerifierTest(
-                            name=name,
-                            verifier_id=verifier_id,
-                            result_layer_1=(payload["result"] == "VALID"),
-                            warn_modified_layer_1=(payload["warn_modified"]),
-                        )))
-                    except Exception:
-                        traceback.print_exc()
+                    _, payload = fut.result()
+                    t = futs[fut]
+                    results.append((t, VerifierTest(
+                        name=name,
+                        verifier_id=verifier_id,
+                        result_layer_1=(payload["result"] == "VALID"),
+                        warn_modified_layer_1=(payload["warn_modified"]),
+                    )))
                 return results
 
             run_paginated(name, process_page, on_skip=pbar.update, where_clause=where_clause)

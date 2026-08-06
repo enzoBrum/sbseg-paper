@@ -1,11 +1,13 @@
 import os
+import re
 import signal
+import shutil
 import socket
 import subprocess
+import sys
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from subprocess import DEVNULL
 
 import requests
 
@@ -35,8 +37,6 @@ class LibraryVerifier(ABC):
             self.command,
             cwd=self.cwd,
             start_new_session=True,
-            stdout=DEVNULL,
-            stderr=DEVNULL,
         )
         self._wait_ready()
 
@@ -68,6 +68,11 @@ class LibraryVerifier(ABC):
     def _wait_ready(self) -> None:
         deadline = time.monotonic() + self.startup_timeout
         while time.monotonic() < deadline:
+            if self._process is not None and self._process.poll() is not None:
+                raise RuntimeError(
+                    f"{self.name} exited during startup "
+                    f"(exit code {self._process.returncode})"
+                )
             try:
                 requests.get(f"http://localhost:{self.port}/", timeout=1)
                 return
@@ -96,7 +101,7 @@ class PyHankoVerifier(LibraryVerifier):
     @property
     def command(self) -> list[str]:
         return [
-            "uv", "run", "gunicorn", "main:application",
+            sys.executable, "-m", "gunicorn", "main:application",
             "--bind", f"localhost:{self.port}",
         ]
 
@@ -112,6 +117,20 @@ class DSSVerifier(LibraryVerifier):
 
     @property
     def command(self) -> list[str]:
+        java = shutil.which("java")
+        if java is None:
+            raise RuntimeError("DSS requires Java 21, but `java` was not found")
+
+        version = subprocess.run(
+            [java, "-version"], capture_output=True, text=True
+        )
+        match = re.search(
+            r'version "(?:1\.)?(\d+)', version.stderr + version.stdout
+        )
+        if match is None or int(match.group(1)) < 21:
+            raise RuntimeError(
+                "DSS requires Java 21 or newer. Install it or run DSS with Docker."
+            )
         return ["java", "-jar", "target/demo-0.0.1-SNAPSHOT.jar"]
 
     @property

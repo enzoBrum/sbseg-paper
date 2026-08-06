@@ -57,8 +57,7 @@ Repository layout:
 ├── CLAUDE.md                    internal architecture notes, not required reading
 ├── pyproject.toml, uv.lock      Python dependencies, uv managed
 ├── .python-version              pins Python 3.13
-├── Dockerfile, .dockerignore    library verifier image (pyHanko + DSS)
-├── docker/entrypoint.sh         container entrypoint
+├── Dockerfile, compose.yaml     library verifier image (pyHanko + DSS)
 ├── examples/                    the paper's "$1 Yacht" demo PDFs
 ├── paper-example/               standalone Alice/Bob pyHanko signing demo
 ├── src/
@@ -219,13 +218,15 @@ For the library verifier workflow, a self contained image bundles Python
 3.13, uv, a JRE, and a freshly built DSS jar:
 
 ```bash
-docker build -t sbseg-verifiers .
+docker compose build verifier
 ```
 
 The build compiles the DSS jar from source in a Maven stage, so you do not
 need Java, Maven, or a host built jar. This image supports `generate`, `run
 pyhanko`, `run dss`, `list`, and `db ...`. It does not support the GUI
-verifiers or the `vm ...` commands.
+verifiers or the `vm ...` commands. Arguments after the service name map
+directly to the native CLI: replace `uv run python src/main.py` with
+`docker compose run --rm verifier`.
 
 ## Minimal Test
 
@@ -260,9 +261,9 @@ smoke` instead, dropping `dss`.
 Docker equivalent:
 
 ```bash
-docker run --rm -v sbseg-data:/data sbseg-verifiers generate
-docker run --rm -v sbseg-data:/data sbseg-verifiers run pyhanko dss --mode smoke
-docker run --rm -v sbseg-data:/data sbseg-verifiers list
+docker compose run --rm verifier generate
+docker compose run --rm verifier run pyhanko dss --mode smoke
+docker compose run --rm verifier list
 ```
 
 ### See the attack visually
@@ -324,9 +325,9 @@ uv run python src/main.py list --disagree      # only rows where a verifier disa
 Docker:
 
 ```bash
-docker run --rm -v sbseg-data:/data sbseg-verifiers generate
-docker run --rm -v sbseg-data:/data sbseg-verifiers run pyhanko dss --mode full
-docker run --rm -v sbseg-data:/data sbseg-verifiers list --disagree
+docker compose run --rm verifier generate
+docker compose run --rm verifier run pyhanko dss --mode full
+docker compose run --rm verifier list --disagree
 ```
 
 `--mode full`, the default, runs the entire sweep. `--mode fast` runs a

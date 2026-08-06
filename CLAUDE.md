@@ -75,7 +75,8 @@ uv sync                                          # syncs root + workspace member
 uv run python src/main.py                        # run with project venv
 ```
 
-The PyHanko sub-workspace lives at `src/tester_scripts/library/pyhanko/`.
+The PyHanko HTTP service lives at `src/tester_scripts/library/pyhanko/` and
+uses the root Python environment.
 
 ## Architecture
 

@@ -3,10 +3,11 @@ name = "new-attacks"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "black>=25.9.0",
     "flask>=3.1.2",
+    "gunicorn>=23.0.0",
     "isort>=7.0.0",
     "keyboard>=0.13.5",
     "mss>=10.1.0",
@@ -14,7 +15,7 @@ dependencies = [
     "pillow>=12.0.0",
     "psutil>=7.1.2",
     "pyautogui>=0.9.54",
-    "pyhanko>=0.31.0",
+    "pyhanko==0.32.0",
     "pyhanko-certvalidator>=0.29.0",
     "pyhanko-cli>=0.2.0",
     "pymupdf>=1.27.2.3",
@@ -30,15 +31,8 @@ dependencies = [
 [tool.pyrefly]
 project-includes = ["**/*.py*"]
 
-[tool.uv.workspace]
-members = [
-    "src/tester_scripts/library/pyhanko",
-    "repro/dss",
-]
-
 [dependency-groups]
 dev = [
     "black>=25.9.0",
     "isort>=7.0.0",
-    "pyrefly>=0.39.4",
 ]

@@ -1,14 +1,5 @@
 # syntax=docker/dockerfile:1
 #
-# Docker image wrapping `src/main.py` for the library-verifier workflow
-# (generate / run pyhanko / run dss / list / db ...). GUI verifiers
-# (adobe, foxit, master_pdf_editor, edge) and `vm ...` are NOT supported
-# here — they depend on the separate Windows-VM infra in vm/compose.yaml.
-#
-# This is purely additive: the native `uv run python src/main.py ...`
-# workflow on the host is unaffected and remains the primary documented way
-# to run this project. See README.md, "Docker (optional)".
-
 # ---------------------------------------------------------------------------
 # Stage 1: build the DSS jar from source.
 #
@@ -50,6 +41,9 @@ RUN uv sync --frozen
 COPY --from=dss-build /build/target/demo-0.0.1-SNAPSHOT.jar \
     src/tester_scripts/library/dss/target/demo-0.0.1-SNAPSHOT.jar
 
+ENV SBSEG_DB_PATH=/data/signed_files.db
 VOLUME ["/data"]
+WORKDIR /data
 
-ENTRYPOINT ["docker/entrypoint.sh"]
+# Everything after the image name is passed straight to the normal CLI.
+ENTRYPOINT ["uv", "run", "--project", "/app", "python", "/app/src/main.py"]
