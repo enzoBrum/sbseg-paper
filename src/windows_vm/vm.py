@@ -139,6 +139,7 @@ def run_vm(
     ) as response:
         response.raise_for_status()
 
+    run_error = None
     with requests.post(
         f"{API_URL}/run",
         json={
@@ -152,7 +153,7 @@ def run_vm(
         timeout=timeout,
     ) as response:
         if not response.ok:
-            raise RuntimeError(response.json()["error"])
+            run_error = response.json().get("error", "VM verifier run failed")
 
     with requests.get(f"{API_URL}/database", timeout=300) as response:
         response.raise_for_status()
@@ -160,13 +161,18 @@ def run_vm(
 
     archive = STATE_ROOT / "screenshots.zip"
     with requests.get(f"{API_URL}/screenshots", timeout=300) as response:
-        if response.status_code == 404:
-            return
-        response.raise_for_status()
-        archive.write_bytes(response.content)
-    with zipfile.ZipFile(archive) as screenshots:
-        screenshots.extractall(REPO_ROOT / "src" / "screenshots")
-    archive.unlink()
+        if response.status_code != 404:
+            response.raise_for_status()
+            archive.write_bytes(response.content)
+            with zipfile.ZipFile(archive) as screenshots:
+                screenshots.extractall(REPO_ROOT / "src" / "screenshots")
+            archive.unlink()
+
+    if run_error:
+        raise RuntimeError(
+            f"{run_error}\nPartial database was recovered; available screenshots "
+            "were also downloaded."
+        )
 
 
 def stop_vm() -> None:

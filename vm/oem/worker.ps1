@@ -192,47 +192,49 @@ function Run-Readers($Request) {
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repo\src\screenshots"
     $uv = Get-Uv
 
-    foreach ($verifier in $Request.verifiers) {
-        # Every selected reader updates the same database sequentially.
-        if (-not (Test-Path $verifier.exe)) {
-            throw "$($verifier.slug) is not installed"
-        }
-        $arguments = @(
-            "run", "--project", $repo, "python", "$repo\src\main.py",
-            "run", $verifier.slug, "--mode", $Request.mode,
-            "--action-delay", $Request.action_delay
-        )
-        $attemptOutput = @()
-        try {
-            Write-Log "Starting verifier: $($verifier.slug)"
-            # Python owns retries. Keep the final output here only so the HTTP
-            # caller receives the actual failure instead of a bare exit code.
-            $ErrorActionPreference = "Continue"
-            $attemptOutput = @(
-                & $uv @arguments 2>&1 | ForEach-Object {
-                    $line = "$_"
-                    Write-Log $line
-                    $line
-                }
-            )
-            $verifierExitCode = $LASTEXITCODE
-            $ErrorActionPreference = "Stop"
-
-            if ($verifierExitCode -ne 0) {
-                $details = ($attemptOutput | Select-Object -Last 30) -join [Environment]::NewLine
-                throw "$($verifier.slug) verification failed with exit code $verifierExitCode`n$details"
+    try {
+        foreach ($verifier in $Request.verifiers) {
+            # Every selected reader updates the same database sequentially.
+            if (-not (Test-Path $verifier.exe)) {
+                throw "$($verifier.slug) is not installed"
             }
-        } finally {
-            $ErrorActionPreference = "Stop"
-            Write-Log "Verifier ended: $($verifier.slug)"
-        }
-    }
+            $arguments = @(
+                "run", "--project", $repo, "python", "$repo\src\main.py",
+                "run", $verifier.slug, "--mode", $Request.mode,
+                "--action-delay", $Request.action_delay
+            )
+            $attemptOutput = @()
+            try {
+                Write-Log "Starting verifier: $($verifier.slug)"
+                # Python owns retries. Keep the final output here only so the HTTP
+                # caller receives the actual failure instead of a bare exit code.
+                $ErrorActionPreference = "Continue"
+                $attemptOutput = @(
+                    & $uv @arguments 2>&1 | ForEach-Object {
+                        $line = "$_"
+                        Write-Log $line
+                        $line
+                    }
+                )
+                $verifierExitCode = $LASTEXITCODE
+                $ErrorActionPreference = "Stop"
 
-    Copy-Item -Force $database $outputDb
-    # Screenshots are returned separately because the host expects their normal
-    # src/screenshots directory layout.
-    if ((Test-Path "$repo\src\screenshots") -and (Get-ChildItem "$repo\src\screenshots")) {
-        Compress-Archive -Force -Path "$repo\src\screenshots\*" -DestinationPath $screenshotsZip
+                if ($verifierExitCode -ne 0) {
+                    $details = ($attemptOutput | Select-Object -Last 30) -join [Environment]::NewLine
+                    throw "$($verifier.slug) verification failed with exit code $verifierExitCode`n$details"
+                }
+            } finally {
+                $ErrorActionPreference = "Stop"
+                Write-Log "Verifier ended: $($verifier.slug)"
+            }
+        }
+    } finally {
+        # Publish whatever the verifier committed before it failed. The host
+        # downloads these artifacts before surfacing the HTTP error.
+        Copy-Item -Force $database $outputDb
+        if ((Test-Path "$repo\src\screenshots") -and (Get-ChildItem "$repo\src\screenshots")) {
+            Compress-Archive -Force -Path "$repo\src\screenshots\*" -DestinationPath $screenshotsZip
+        }
     }
 }
 
@@ -294,7 +296,7 @@ while ($true) {
             Run-Readers (Read-Json $context.Request)
             Send-Json $context 200 @{ ok = $true; message = "run completed"; warnings = @() }
         } elseif ($method -eq "GET" -and $path -eq "/database") {
-            # Results exist only after a fully successful /run.
+            # This may contain partial progress from a failed verifier run.
             Send-File $context $outputDb "application/vnd.sqlite3"
         } elseif ($method -eq "GET" -and $path -eq "/screenshots") {
             Send-File $context $screenshotsZip "application/zip"
