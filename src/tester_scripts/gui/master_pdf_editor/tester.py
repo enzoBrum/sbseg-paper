@@ -23,7 +23,7 @@ _SETUP_DONE = False
 def _handle_popups() -> None:
     try:
         dialog = pyautogui.locateOnScreen(
-            str(POPUP_DIR / "default_pdf_dialog.png"), confidence=0.8
+            str(POPUP_DIR / "default_pdf_dialog.png"), confidence=0.9
         )
     except pyautogui.ImageNotFoundException:
         return
@@ -32,17 +32,20 @@ def _handle_popups() -> None:
 
     sleep(0.5)
     region = (dialog.left, dialog.top, dialog.width, dialog.height)
-    for image in ("default_pdf_checkbox.png", "default_pdf_no.png"):
-        try:
-            point = pyautogui.locateCenterOnScreen(
-                str(POPUP_DIR / image), region=region, confidence=0.8
-            )
-        except pyautogui.ImageNotFoundException:
-            point = None
-        if point is None:
-            raise RuntimeError(f"Could not handle Master PDF popup: {image}")
-        gui_action(pyautogui.moveTo, point.x, point.y)
-        gui_action(pyautogui.click)
+    try:
+        for image in ("default_pdf_checkbox.png", "default_pdf_no.png"):
+            try:
+                point = pyautogui.locateCenterOnScreen(
+                    str(POPUP_DIR / image), region=region, confidence=0.8
+                )
+            except pyautogui.ImageNotFoundException:
+                point = None
+            if point is None:
+                raise RuntimeError(f"Could not handle Master PDF popup: {image}")
+            gui_action(pyautogui.moveTo, point.x, point.y)
+            gui_action(pyautogui.click)
+    except:
+        return
 
 
 def _setup() -> None:
@@ -77,8 +80,7 @@ def _pre_capture1():
     gui_action(pyautogui.click, check_popups=True)
     bt = wait_for_img([IMG_DIR / "sig_identified.png"], 30)
     gui_action(pyautogui.moveTo, bt.x, bt.y)
-    gui_action(pyautogui.click, check_popups=True)
-    gui_action(pyautogui.click, check_popups=True)
+    gui_action(lambda: pyautogui.click(clicks=2), check_popups=True)
 
 
 def _capture(result_path: Path) -> bytes:

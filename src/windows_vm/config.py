@@ -4,7 +4,9 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(
+    os.environ.get("SBSEG_REPO_ROOT", Path(__file__).resolve().parents[2])
+).resolve()
 STATE_ROOT = REPO_ROOT / ".vm"
 INSTALLER_CACHE = STATE_ROOT / "installers"
 API_URL = f"http://127.0.0.1:{os.environ.get('SBSEG_VM_API_PORT', '8765')}"

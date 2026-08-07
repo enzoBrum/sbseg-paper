@@ -1,3 +1,4 @@
+import glob
 import subprocess
 import shutil
 import time
@@ -40,15 +41,15 @@ def _check_popups() -> None:
         _CHECKING_POPUPS = False
 
 
-def gui_action(action, *args, check_popups: bool = False, **kwargs):
+def gui_action(action, *args, check_popups: bool = True, **kwargs):
     """Give the desktop time to settle around every PyAutoGUI action."""
     time.sleep(_ACTION_DELAY)
+    if check_popups:
+        _check_popups()
     try:
         result = action(*args, **kwargs)
     finally:
         time.sleep(_ACTION_DELAY)
-    if check_popups:
-        _check_popups()
     return result
 
 
@@ -132,6 +133,7 @@ def _maximize_reader_window() -> None:
     time.sleep(_ACTION_DELAY)
 
 
+CHECKING_POPUPS = False
 def wait_for_img(
     paths: list[Path],
     timeout: float,
@@ -139,7 +141,9 @@ def wait_for_img(
     callback: Callable[[], None] | None = None,
     should_exist: bool = True,
     confidence: float = 0.6,
+    check_popups: bool = True
 ):
+    global CHECKING_POPUPS
     end = time.time() + timeout
     while time.time() < end:
         for img in paths:

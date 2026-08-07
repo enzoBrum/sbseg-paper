@@ -1,0 +1,16 @@
+services:
+  verifier:
+    build: .
+    image: sbseg-verifiers
+    network_mode: host
+    working_dir: ${PWD}
+    environment:
+      SBSEG_REPO_ROOT: ${PWD}
+      SBSEG_DB_PATH: ${PWD}/src/signed_files.db
+    volumes:
+      - type: bind
+        source: .
+        target: ${PWD}
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock

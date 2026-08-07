@@ -1,5 +1,7 @@
+import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pyautogui
@@ -58,20 +60,39 @@ _POPUPS = [
         [[POPUP_DIR / "trust_certificate_finished_btn.png"]],
     ),
 ]
+_POPUP_WORKERS = min(len(_POPUPS), os.cpu_count() or 1)
+_POPUP_POOL = ThreadPoolExecutor(max_workers=_POPUP_WORKERS)
 
 
-def _find_dialog(path: Path):
+def _find_dialog(path: Path, screenshot=None):
     try:
+        if screenshot is not None:
+            return pyautogui.locate(
+                str(path), screenshot, confidence=0.8
+            )
         return pyautogui.locateOnScreen(str(path), confidence=0.8)
     except pyautogui.ImageNotFoundException:
         return None
 
 
-def _find_action(paths: list[Path], region: tuple[int, int, int, int] | None = None):
+def _find_standard_dialogs():
+    # Take one consistent desktop snapshot, then let OpenCV compare every
+    # popup template concurrently. Its matching code releases the Python GIL,
+    # so the threads use multiple CPU cores without duplicating screenshots.
+    screenshot = pyautogui.screenshot()
+    return list(
+        _POPUP_POOL.map(
+            lambda popup: _find_dialog(popup[0], screenshot),
+            _POPUPS,
+        )
+    )
+
+
+def _find_action(paths: list[Path], region: tuple[int, int, int, int] | None = None, confidence: float = 0.8):
     for path in paths:
         try:
             point = pyautogui.locateCenterOnScreen(
-                str(path), region=region, confidence=0.8
+                str(path), region=region, confidence=confidence
             )
         except pyautogui.ImageNotFoundException:
             continue
@@ -84,8 +105,8 @@ def _handle_standard_popups() -> None:
     # Dismissing one popup can expose another, so restart the scan each time.
     for _ in range(6):
         handled = False
-        for dialog_path, actions in _POPUPS:
-            dialog = _find_dialog(dialog_path)
+        dialogs = _find_standard_dialogs()
+        for (dialog_path, actions), dialog in zip(_POPUPS, dialogs):
             if dialog is None:
                 continue
 
@@ -127,7 +148,7 @@ def _click_when_visible(
         paths,
         30,
         callback=_handle_standard_popups,
-        confidence=0.8,
+        confidence=0.7,
     )
     if point is None:
         raise RuntimeError(f"Could not find Foxit control: {label}")

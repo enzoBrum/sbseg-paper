@@ -71,6 +71,32 @@ def init_vm(timeout: float) -> dict[str, Any]:
     return health
 
 
+def ensure_vm(timeout: float) -> dict[str, Any]:
+    """Start the Windows container when needed, then wait for its worker."""
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(REPO_ROOT / "vm" / "compose.yaml"),
+            "ps",
+            "--status",
+            "running",
+            "--services",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    if "windows-verifiers" in result.stdout.splitlines():
+        print("Windows VM is running; checking guest health...")
+    else:
+        print("Windows VM is not running; starting it...")
+        create_vm()
+    return init_vm(timeout)
+
+
 def prepare_vm(values: list[str], timeout: float) -> list[str]:
     """Upload selected installers and prepare the guest."""
     installers: list[dict[str, Any]] = []

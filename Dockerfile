@@ -19,8 +19,10 @@ RUN mvn -B -q dependency:go-offline || true
 COPY src/tester_scripts/library/dss/src ./src
 RUN mvn -B -q package -DskipTests
 
+FROM docker:27-cli AS docker-cli
+
 # ---------------------------------------------------------------------------
-# Stage 2: runtime image — Python 3.13 (uv) + JRE 21.
+# Runtime image — Python 3.13 (uv) + JRE 21 + Docker CLI/Compose.
 # ---------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
@@ -30,6 +32,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose \
+    /usr/local/libexec/docker/cli-plugins/docker-compose
 
 WORKDIR /app
 COPY . .
