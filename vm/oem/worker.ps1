@@ -193,6 +193,14 @@ function Run-Readers($Request) {
     $uv = Get-Uv
     $failures = @()
 
+    # Publish a consistent DB snapshot to the shared folder after every
+    # committed test. The host merges this incrementally, so a dropped/timed-out
+    # /run request never discards results that the verifier already recorded.
+    $syncDb = Join-Path $sharedRoot ".vm\vm_output.db"
+    New-Item -ItemType Directory -Force -Path (Split-Path $syncDb) | Out-Null
+    Remove-Item -Force -ErrorAction SilentlyContinue $syncDb, "$syncDb.tmp"
+    $env:SBSEG_DB_SYNC_PATH = $syncDb
+
     try {
         foreach ($verifier in $Request.verifiers) {
             # Every selected reader updates the same database sequentially.

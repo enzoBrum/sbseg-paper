@@ -3,6 +3,7 @@
 import subprocess
 import sqlite3
 import tempfile
+import threading
 import time
 import zipfile
 from dataclasses import asdict
@@ -14,9 +15,19 @@ from tester_scripts.gui.verifiers import REGISTRY as GUI_VERIFIERS
 
 from .config import API_URL, INSTALLER_CACHE, REPO_ROOT, STATE_ROOT, VERIFIERS
 
+# The guest writes a consistent DB snapshot here (shared folder) after every
+# committed test; see worker.ps1 SBSEG_DB_SYNC_PATH.
+SHARED_OUTPUT_DB = STATE_ROOT / "vm_output.db"
+# How often the host folds the guest's shared snapshot into the local DB.
+_MERGE_POLL_INTERVAL = 5.0
 
-def _merge_database(database: Path, returned_database: Path) -> None:
-    """Add missing verifier results without replacing the local test corpus."""
+
+def _merge_database(database: Path, returned_database: Path) -> int:
+    """Add missing verifier results without replacing the local test corpus.
+
+    Returns the number of newly inserted verifier results.
+    """
+    inserted = 0
     with (
         sqlite3.connect(database, timeout=60) as target,
         sqlite3.connect(returned_database) as source,
@@ -73,6 +84,26 @@ def _merge_database(database: Path, returned_database: Path) -> None:
                 (test_id, cursor.lastrowid),
             )
             existing.add((test_id, verifier))
+            inserted += 1
+    return inserted
+
+
+def _merge_shared_snapshot(database: Path, snapshot: Path) -> int:
+    """Fold the guest's shared snapshot into the local DB; return #inserted.
+
+    Tolerant of a missing or momentarily-unreadable snapshot (the guest writes
+    it atomically, but SMB propagation can lag) so it is safe to call on a
+    timer while the run is still in flight.
+    """
+    if not snapshot.is_file():
+        return 0
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            local = Path(directory) / "snapshot.db"
+            local.write_bytes(snapshot.read_bytes())
+            return _merge_database(database, local)
+    except (OSError, sqlite3.Error):
+        return 0
 
 
 def _targets(values: list[str]) -> list[str]:
@@ -191,52 +222,96 @@ def run_vm(
     action_delay: float,
     timeout: float,
 ) -> None:
-    """Run verifiers and directly replace the database with the result."""
+    """Run verifiers, merging results into the local DB as they arrive.
+
+    The guest commits each test to a snapshot in the shared folder; a
+    background thread folds those into the local DB while the run is still in
+    flight, and a final merge runs no matter how the /run request ends. A
+    dropped, crashed, or timed-out request therefore never discards results the
+    verifier already recorded.
+    """
     database = database.expanduser().resolve()
     if not database.is_file():
         raise RuntimeError(f"Database does not exist: {database}")
+
+    # Clear any snapshot left over from a previous run so we never merge stale
+    # results before the guest has produced a fresh one.
+    SHARED_OUTPUT_DB.unlink(missing_ok=True)
 
     with database.open("rb") as data, requests.put(
         f"{API_URL}/database", data=data, timeout=300
     ) as response:
         response.raise_for_status()
 
+    stop_polling = threading.Event()
+
+    def _poll_snapshot() -> None:
+        while not stop_polling.wait(_MERGE_POLL_INTERVAL):
+            added = _merge_shared_snapshot(database, SHARED_OUTPUT_DB)
+            if added:
+                print(f"Merged {added} new result(s) from the VM so far.")
+
+    poller = threading.Thread(target=_poll_snapshot, daemon=True)
+    poller.start()
+
     run_error = None
-    with requests.post(
-        f"{API_URL}/run",
-        json={
-            "verifiers": [
-                {"slug": slug, "exe": VERIFIERS[slug].exe}
-                for slug in _targets(values)
-            ],
-            "mode": mode,
-            "action_delay": action_delay,
-        },
-        timeout=timeout,
-    ) as response:
-        if not response.ok:
-            run_error = response.json().get("error", "VM verifier run failed")
+    try:
+        with requests.post(
+            f"{API_URL}/run",
+            json={
+                "verifiers": [
+                    {"slug": slug, "exe": VERIFIERS[slug].exe}
+                    for slug in _targets(values)
+                ],
+                "mode": mode,
+                "action_delay": action_delay,
+            },
+            timeout=timeout,
+        ) as response:
+            if not response.ok:
+                run_error = response.json().get("error", "VM verifier run failed")
+    except requests.RequestException as error:
+        # The request itself failed (timeout, reset, VM restart). The guest may
+        # still have committed results to the shared snapshot; the finally below
+        # collects whatever is there.
+        run_error = f"VM run request failed: {error}"
+    finally:
+        stop_polling.set()
+        poller.join(timeout=30)
 
-    with requests.get(f"{API_URL}/database", timeout=300) as response:
-        response.raise_for_status()
-        with tempfile.TemporaryDirectory() as directory:
-            returned_database = Path(directory) / "results.db"
-            returned_database.write_bytes(response.content)
-            _merge_database(database, returned_database)
+        # Authoritative final merge from the shared snapshot — independent of
+        # whether the request survived.
+        _merge_shared_snapshot(database, SHARED_OUTPUT_DB)
 
-    archive = STATE_ROOT / "screenshots.zip"
-    with requests.get(f"{API_URL}/screenshots", timeout=300) as response:
-        if response.status_code != 404:
-            response.raise_for_status()
-            archive.write_bytes(response.content)
-            with zipfile.ZipFile(archive) as screenshots:
-                screenshots.extractall(REPO_ROOT / "src" / "screenshots")
-            archive.unlink()
+        # Best-effort HTTP fallback in case the shared snapshot never appeared
+        # (e.g. an old guest worker without snapshot support).
+        try:
+            with requests.get(f"{API_URL}/database", timeout=300) as response:
+                if response.ok:
+                    with tempfile.TemporaryDirectory() as directory:
+                        returned = Path(directory) / "results.db"
+                        returned.write_bytes(response.content)
+                        _merge_database(database, returned)
+        except requests.RequestException:
+            pass
+
+        # Screenshots are best-effort and must not mask a run error.
+        archive = STATE_ROOT / "screenshots.zip"
+        try:
+            with requests.get(f"{API_URL}/screenshots", timeout=300) as response:
+                if response.status_code != 404:
+                    response.raise_for_status()
+                    archive.write_bytes(response.content)
+                    with zipfile.ZipFile(archive) as screenshots:
+                        screenshots.extractall(REPO_ROOT / "src" / "screenshots")
+                    archive.unlink()
+        except (requests.RequestException, zipfile.BadZipFile, OSError):
+            pass
 
     if run_error:
         raise RuntimeError(
-            f"{run_error}\nPartial database was recovered; available screenshots "
-            "were also downloaded."
+            f"{run_error}\nResults committed before the failure were merged into "
+            f"{database}; available screenshots were also downloaded."
         )
 
 
