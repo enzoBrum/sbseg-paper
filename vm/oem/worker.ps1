@@ -191,16 +191,19 @@ function Run-Readers($Request) {
     Remove-Item -Force -ErrorAction SilentlyContinue $outputDb, $screenshotsZip
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$repo\src\screenshots"
     $uv = Get-Uv
+    $failures = @()
 
     try {
         foreach ($verifier in $Request.verifiers) {
             # Every selected reader updates the same database sequentially.
             if (-not (Test-Path $verifier.exe)) {
-                throw "$($verifier.slug) is not installed"
+                $failures += "$($verifier.slug) is not installed"
+                continue
             }
             $arguments = @(
                 "run", "--project", $repo, "python", "$repo\src\main.py",
-                "run", $verifier.slug, "--mode", $Request.mode,
+                "--db-path", $database, "run", $verifier.slug,
+                "--mode", $Request.mode,
                 "--action-delay", $Request.action_delay
             )
             $attemptOutput = @()
@@ -221,12 +224,17 @@ function Run-Readers($Request) {
 
                 if ($verifierExitCode -ne 0) {
                     $details = ($attemptOutput | Select-Object -Last 30) -join [Environment]::NewLine
-                    throw "$($verifier.slug) verification failed with exit code $verifierExitCode`n$details"
+                    $failures += "$($verifier.slug) verification failed with exit code $verifierExitCode`n$details"
                 }
+            } catch {
+                $failures += "$($verifier.slug) could not run: $($_.Exception.Message)"
             } finally {
                 $ErrorActionPreference = "Stop"
                 Write-Log "Verifier ended: $($verifier.slug)"
             }
+        }
+        if ($failures.Count -gt 0) {
+            throw ($failures -join "`n`n")
         }
     } finally {
         # Publish whatever the verifier committed before it failed. The host

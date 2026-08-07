@@ -257,6 +257,7 @@ def run(
 
         set_action_delay(action_delay)
 
+    failures: list[tuple[str, str]] = []
     for target in local_targets:
         where_clause = None
         description = "full batch"
@@ -271,8 +272,8 @@ def run(
         try:
             test(target, where_clause=where_clause)
         except Exception as error:
-            console.print(f"[red]{target} failed:[/] {error}")
-            raise typer.Exit(1)
+            console.print(f"[red]{target} failed; continuing...[/]")
+            failures.append((target, str(error)))
 
     if vm_targets:
         from windows_vm.vm import ensure_vm, run_vm
@@ -280,16 +281,25 @@ def run(
         console.print(
             f"Desktop action delay: {action_delay:g}s before and after each action."
         )
-        _vm_call(ensure_vm, timeout)
-        _vm_call(
-            run_vm,
-            vm_targets,
-            _db_path(ctx),
-            mode.value,
-            action_delay,
-            timeout,
-        )
-        console.print("[green]VM verifier run complete.[/]")
+        try:
+            ensure_vm(timeout)
+            run_vm(
+                vm_targets,
+                _db_path(ctx),
+                mode.value,
+                action_delay,
+                timeout,
+            )
+        except Exception as error:
+            failures.append(("desktop VM", str(error)))
+        else:
+            console.print("[green]VM verifier run complete.[/]")
+
+    if failures:
+        console.print("[red]Verifier failures:[/]")
+        for target, error in failures:
+            console.print(f"  [bold]{target}:[/] {error}")
+        raise typer.Exit(1)
 
 
 # ---------------------------------------------------------------------------

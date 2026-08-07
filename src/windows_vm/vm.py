@@ -1,6 +1,8 @@
 """Docker and HTTP operations for the Windows VM."""
 
 import subprocess
+import sqlite3
+import tempfile
 import time
 import zipfile
 from dataclasses import asdict
@@ -11,6 +13,66 @@ import requests
 from tester_scripts.gui.verifiers import REGISTRY as GUI_VERIFIERS
 
 from .config import API_URL, INSTALLER_CACHE, REPO_ROOT, STATE_ROOT, VERIFIERS
+
+
+def _merge_database(database: Path, returned_database: Path) -> None:
+    """Add missing verifier results without replacing the local test corpus."""
+    with (
+        sqlite3.connect(database, timeout=60) as target,
+        sqlite3.connect(returned_database) as source,
+    ):
+        target.execute("BEGIN IMMEDIATE")
+        verifier_ids = dict(target.execute("SELECT name, id FROM verifier"))
+        test_ids = {
+            row[0] for row in target.execute("SELECT id FROM modification_test")
+        }
+        existing = set(
+            target.execute(
+                """
+                SELECT association.idA, result.name
+                FROM modification_verifier_association AS association
+                JOIN verifier_test AS result ON result.id = association.idB
+                """
+            )
+        )
+
+        rows = source.execute(
+            """
+            SELECT association.idA, result.name,
+                   result.result_layer_1, result.warn_modified_layer_1,
+                   result.screenshot_layer_1,
+                   result.result_layer_2, result.warn_modified_layer_2,
+                   result.screenshot_layer_2
+            FROM modification_verifier_association AS association
+            JOIN verifier_test AS result ON result.id = association.idB
+            """
+        )
+        for row in rows:
+            test_id, verifier = row[:2]
+            if (
+                (test_id, verifier) in existing
+                or test_id not in test_ids
+                or verifier not in verifier_ids
+            ):
+                continue
+            cursor = target.execute(
+                """
+                INSERT INTO verifier_test (
+                    name, verifier_id,
+                    result_layer_1, warn_modified_layer_1, screenshot_layer_1,
+                    result_layer_2, warn_modified_layer_2, screenshot_layer_2
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (verifier, verifier_ids[verifier], *row[2:]),
+            )
+            target.execute(
+                """
+                INSERT INTO modification_verifier_association (idA, idB)
+                VALUES (?, ?)
+                """,
+                (test_id, cursor.lastrowid),
+            )
+            existing.add((test_id, verifier))
 
 
 def _targets(values: list[str]) -> list[str]:
@@ -157,7 +219,10 @@ def run_vm(
 
     with requests.get(f"{API_URL}/database", timeout=300) as response:
         response.raise_for_status()
-        database.write_bytes(response.content)
+        with tempfile.TemporaryDirectory() as directory:
+            returned_database = Path(directory) / "results.db"
+            returned_database.write_bytes(response.content)
+            _merge_database(database, returned_database)
 
     archive = STATE_ROOT / "screenshots.zip"
     with requests.get(f"{API_URL}/screenshots", timeout=300) as response:

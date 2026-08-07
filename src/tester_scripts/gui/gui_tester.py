@@ -1,6 +1,5 @@
 import glob
 import subprocess
-import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,7 +8,7 @@ from typing import Callable
 
 import pyautogui
 
-from modification_pipeline.model import FILE_PATH, ModificationTest, VerifierTest
+from modification_pipeline.model import ModificationTest, VerifierTest
 
 SRC_ROOT = Path(__file__).parent.parent.parent
 SCREENSHOTS_ROOT = SRC_ROOT / "screenshots"
@@ -374,8 +373,6 @@ def run_gui_tester(config: GuiReaderConfig, where_clause=None) -> None:
         config.slug,
         process_page,
         already_tested=_already_tested,
-        on_page_committed=lambda: shutil.copyfile(
-            FILE_PATH, FILE_PATH.parent / "backup.db"
-        ),
+        page_size=1,
         where_clause=where_clause,
     )
