@@ -129,8 +129,10 @@ lightweight:
   native library path. Windows is only needed for the GUI path.
 - CPU and RAM: any modern machine is enough. 2 cores and 4 GB RAM are ample.
   The library run is light on both CPU and I/O.
-- Disk: about 2 GB for the Python environment plus the DSS Java runtime and
-  jar.
+- Disk: about 700 MB for the Python environment plus the DSS Java runtime and
+  jar, plus about 255 MB of Git LFS content (screenshots, the results
+  database, and the demo PDFs). Option B's Docker image is a self-contained
+  alternative to that Python environment and is about 1.5 to 2 GB on the reference machine.
 - Network: needed once, to download dependencies during installation.
   Verification itself runs entirely on `localhost`.
 
@@ -138,24 +140,36 @@ The paper's reference evaluation ran desktop and web verifiers on Windows 11
 and library verifiers on NixOS 26. The container path is provided to make the
 library environment portable across Linux hosts.
 
-GUI verifier reproduction is optional and needs considerably more: a Linux
-host with hardware virtualization (KVM), Docker, several GB of free disk for
-a persistent Windows VM, and reviewer supplied installer binaries for the
-desktop readers. It can be launched natively or through the Compose service
-and is not required for the library SeloR claim.
+GUI verifier reproduction is optional and needs considerably more. Budget
+at least 25 GB of free disk for the full path (on the reference machine,
+about 21 GB for the booted Windows VM with all four readers installed,
+about 1.3 GB for the installer cache, and 1.5 to 2 GB for the Docker
+image). It also needs a Linux host with hardware virtualization
+(KVM), Docker, and reviewer supplied installer binaries for the desktop
+readers. It can be launched natively or through the Compose service and is
+not required for the library SeloR claim.
 
 ## Dependencies
 
 Runtime toolchain: Python 3.13, pinned in `.python-version`, and
 [uv](https://docs.astral.sh/uv/), the package and environment manager used
 throughout. It reads `pyproject.toml` and `uv.lock` and creates a fully
-pinned virtual environment. Java 21 is required only for DSS natively; a
-fresh clone also needs Maven and a JDK to build its jar. Neither is needed for
-pyHanko or the Docker path, which builds DSS and bundles its own JRE.
+pinned virtual environment. This artifact is tested with uv 0.12.x. Any
+recent uv release reads the same pinned files, and `curl -LsSf
+https://astral.sh/uv/0.12.3/install.sh | sh` installs that exact version if
+an exact match is wanted. [Docker](https://docs.docker.com/get-started/get-docker/)
+is only needed for the containerized Option B below and the optional
+GUI/VM path, the native path only needs uv. This repository also stores its
+PDFs, PNGs, and results database via [Git LFS](https://git-lfs.com), see
+the clone step in Installation. Java 21 is required only for DSS natively.
+A fresh clone also needs Maven 3.9+ and a JDK to build its jar. Neither is
+needed for pyHanko or the Docker path, which builds DSS and bundles its own
+JRE.
 
 Python packages are declared in `pyproject.toml`, exact versions locked in
-`uv.lock`. Key ones: `pyhanko` (version 0.32.0 in the artifact lockfile;
-the paper's evaluation records 0.32.1), `pyhanko-certvalidator`,
+`uv.lock`. Key ones: `pyhanko` (`0.32.0` in the artifact lockfile, the
+version actually used. Table 1 of the paper's `0.32.1` is a typo for it,
+`0.32.1` does not exist on PyPI), `pyhanko-certvalidator`,
 `pyhanko-cli`, `pymupdf` for PDF
 preprocessing, `sqlalchemy` for the results database, `typer` and `rich`
 for the CLI, `flask` and `requests` for the library verifier service and
@@ -166,8 +180,9 @@ used by the Windows VM GUI path.
 The DSS verifier is a small Spring Boot application in
 `src/tester_scripts/library/dss/`. Its `target/` directory is git-ignored, so
 a fresh clone needs either a native Maven build or the Docker image. Build it
-natively with `mvn -q package -DskipTests` from that directory; there is no
-`mvnw` wrapper. The Docker image compiles the jar from source automatically.
+natively with `mvn -q package -DskipTests` (Maven 3.9+) from that directory.
+There is no `mvnw` wrapper. The Docker image compiles the jar from source
+automatically.
 
 The proprietary desktop readers (Adobe Reader, Foxit, Master PDF Editor,
 Edge) are third party licensed software and are not distributed here. They
@@ -201,25 +216,32 @@ daemon, so run only the repository image and code you trust.
 
 ## Installation
 
-### Option A: native 
+Clone this repository first. Both options below assume it is already
+checked out. This repo stores its PDFs, PNGs, and results database via
+[Git LFS](https://git-lfs.com). Install the `git-lfs` package for your OS first, for
+example `apt install git-lfs` or `brew install git-lfs`. Without it, `git
+clone` checks out pointer-file stubs instead of the real binaries, and the
+Minimal Test below fails with `PdfReadError: Illegal PDF header`.
+
+```bash
+git clone https://github.com/enzoBrum/sbseg-paper.git sbseg-artifact
+cd sbseg-artifact
+git lfs install --local
+git lfs pull
+```
+
+### Option A: native
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
    It fetches Python 3.13 automatically if not already present.
-2. Clone this repository and enter it:
-
-   ```bash
-   git clone https://github.com/enzoBrum/sbseg-paper.git sbseg-artifact
-   cd sbseg-artifact
-   ```
-
-3. Create the pinned virtual environment from the lockfile:
+2. Create the pinned virtual environment from the lockfile:
 
    ```bash
    uv sync
    ```
 
-4. Only if you intend to run DSS natively, install Maven and a Java 21 JDK,
-   then build its jar once:
+3. Only if you intend to run DSS natively, install Maven 3.9+ and a Java 21
+   JDK, then build its jar once:
 
    ```bash
    java -version   # should report 21.x
@@ -254,6 +276,9 @@ problems (missing environment, port conflicts, DSS jar or Java issues). It
 uses three small curated cases, and finishes in
 seconds. Use a throwaway database path so the committed results database is
 left untouched.
+
+If step 1 below fails with `PdfReadError: Illegal PDF header`, the clone is
+missing Git LFS content. See the clone step in Installation.
 
 Native:
 
@@ -304,8 +329,17 @@ The structural detector reports signature fields and PDF objects affected by
 an Appearance Substitution Attack (ASA) or Signature Field Duplication Attack
 (SFDA):
 
+Native:
+
 ```bash
-uv run python src/detect_attacks.py examples/yatch-signed.pdf \
+uv run python src/main.py detect examples/yatch-signed.pdf \
+    examples/yatch-asa.pdf examples/yatch-sfda.pdf
+```
+
+Docker:
+
+```bash
+docker compose run --rm verifier detect examples/yatch-signed.pdf \
     examples/yatch-asa.pdf examples/yatch-sfda.pdf
 ```
 
@@ -329,17 +363,42 @@ sweep of PDF permission configurations, a number of verifiers accept the
 tampered document as valid, and some do so without warning the user. The
 artifact reproduces this by generating every configuration, recording each
 verifier's verdict, and surfacing the disagreements between the expected
-result and what the verifier reported.
+result and what the verifier reported. The tables below in this section are
+excerpts, the full output of `uv run python src/main.py list --disagree` is
+in the [Appendix](#appendix-full-list---disagree-output) at the end of this
+document.
 
-The paper separates GUI output into UI-Layer 1 (the prominent top-bar status)
-and UI-Layer 2 (the per-signature details panel). Libraries expose one
-API-Layer containing the verdict and modification report. In the CLI matrix,
-`T` means valid without a modification warning, `W` means valid with a
-modification warning, `F` means invalid, and `-` means that a layer does not
-apply. GUI cells show Layer 1 followed by Layer 2; library cells use only the
-first position. For ASA and SFDA rows, whose expected result is invalid, these
-correspond respectively to the paper's vulnerable, partially vulnerable, and
-secure classifications.
+This artifact records GUI verifier output as two layers, UI-Layer 1 (the
+top-bar status) and UI-Layer 2 (the per-signature details panel), and
+library verifier output as a single API-Layer (the verdict plus
+modification report). The `list` matrix renders each layer as one symbol:
+
+| Symbol | Meaning |
+|---|---|
+| `T` | Valid, no modification warning |
+| `W` | Valid, with a modification warning |
+| `F` | Invalid |
+| `-` | Layer not applicable, or no result recorded |
+
+GUI cells show two symbols, Layer 1 then Layer 2. Library cells show one.
+The paper calls these same three outcomes vulnerable, partially vulnerable,
+and secure, for anyone cross-referencing it.
+
+Each row is one generated test case. The columns before the per-verifier
+ones identify it:
+
+| Column | Meaning |
+|---|---|
+| `id` | Database primary key, use with `db export` / `db dump` |
+| `attack` | Chain that produced the row, `ASA`, `SFDA`, or an `EXTRA_*`/`SMOKE_TEST_*` baseline case |
+| `mdp` | DocMDP/SigFieldLock permission level: `1`, `2`, `3`, or `None` |
+| `cert` | `T` for a certification signature, `F` for an approval signature |
+| `prot` | `T` when the signed field itself is listed in the FieldMDP/SigFieldLock `/Fields` array |
+| `stamp` | `T` when the signature has a visible stamp appearance |
+| `chgpg` | `T` when the attack placed the widget on a different page than it started on |
+| `expected` | The validity a correct verifier should report, `valid` or `invalid` |
+| *(verifier slug)* | One column per verifier, holding the symbol(s) above |
+| `match` | `agree` or `disagree` with `expected` for that one verifier |
 
 The aggregate paper snapshot is:
 
@@ -382,9 +441,10 @@ licenses. Java 21 is needed only for DSS natively. Expected runtime:
 generation takes about 10 to 20 seconds. `run pyhanko dss --mode full` (118
 PDFs posted to each of two local services, 16 in parallel) took well under
 a minute in verification, allow a couple of minutes on slower hardware.
-The paper's result table records pyHanko 0.32.1 and DSS 6.4; the artifact
-currently pins pyHanko 0.32.0 and DSS 6.4, so reproduced results should be
-treated as version-specific.
+Table 1 of the paper lists pyHanko 0.32.1 and DSS 6.4. Version 0.32.1 is a
+typo for 0.32.0, the version the artifact actually pins and used for this
+recorded result, and does not exist on PyPI. Reproduced results should be
+treated as version-specific regardless. Given the version of PyHanko in which the attack was fixed is 0.36.2, this does not reduces the validity of the findings.
 
 Native:
 
@@ -412,10 +472,29 @@ single curated case per verifier for a quick signal.
 
 Expected result: the `list` matrix has one column per verifier and one row
 per test, tagged with the attack and the paper's sweep parameters. `list
---disagree` isolates the cases where a library accepted an expected invalid
-tampered document, and whether it warned, the concrete instances of the
-vulnerability the paper reports for pyHanko and DSS. To inspect an
-individual case, export its PDF or dump the full evidence bundle:
+--disagree` shows every row where a verifier's verdict differs from the
+expected result. The ASA and SFDA rows, where a library
+accepted an expected invalid tampered document, and whether it warned, are
+the concrete instances of the vulnerability the paper reports for pyHanko
+and DSS.
+
+```
+                                     Tests
+┏━━━━━┳━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━┓
+┃ id  ┃ attack  ┃ mdp  ┃ cert ┃ prot ┃ stamp ┃ chgpg ┃ expect… ┃ pyhanko ┃ dss ┃
+┡━━━━━╇━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━┩
+│ 2   │ SFDA    │ None │ F    │ T    │ T     │ T     │ invalid │ T-      │ F-  │
+│ 4   │ SFDA    │ None │ F    │ T    │ T     │ F     │ invalid │ T-      │ F-  │
+│ 7   │ ASA     │ None │ F    │ T    │ F     │ F     │ invalid │ F-      │ T-  │
+│ 55  │ ASA     │ 2    │ T    │ T    │ F     │ F     │ invalid │ F-      │ T-  │
+└─────┴─────────┴──────┴──────┴──────┴───────┴───────┴─────────┴─────────┴─────┘
+```
+
+Reminder: `T` valid/no warning, `W` valid/warning, `F` invalid, `-` not
+applicable or no result recorded. SFDA rows show pyHanko accepting the tampered document (`T-`) while DSS
+correctly rejects it (`F-`). ASA rows show the reverse, matching the
+paper's per-library vulnerability pattern. To inspect an individual case,
+export its PDF or dump the full evidence bundle:
 
 ```bash
 uv run python src/main.py --db-path /tmp/sbseg-full.db db export 42 --out /tmp/case-42.pdf
@@ -474,6 +553,23 @@ Installation and boot progress is viewable at
 `http://127.0.0.1:8006`, the guest worker exposes a local HTTP API on
 `127.0.0.1:${SBSEG_VM_API_PORT:-8765}`.
 
+Expected result: the same `list --disagree` (`-d` for short), scoped to
+these four desktop readers, catches each of them failing at least once:
+
+```
+                                                  Tests
+┏━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━┓
+┃ id ┃ attack ┃ mdp  ┃ cert ┃ prot ┃ stamp ┃ chgpg ┃ expected ┃ adobe ┃ foxit ┃ master_pdf_editor ┃ edge ┃
+┡━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━┩
+│ 2  │ SFDA   │ None │ F    │ T    │ T     │ T     │ invalid  │ TT    │ FF    │ TT                │ TT   │
+│ 15 │ ASA    │ None │ F    │ F    │ F     │ F     │ invalid  │ WW    │ WW    │ TT                │ TT   │
+│ 50 │ SFDA   │ 2    │ T    │ T    │ T     │ T     │ invalid  │ TT    │ TF    │ TT                │ TT   │
+└────┴────────┴──────┴──────┴──────┴───────┴───────┴──────────┴───────┴───────┴───────────────────┴──────┘
+```
+
+Same legend as the Experiments section above: `T` valid/no warning, `W`
+valid/warning, `F` invalid, `-` not applicable or no result recorded.
+
 If you cannot run this path, the paper's GUI verifier evidence is already
 committed under `src/screenshots/` (per verifier subdirectories with layer
 1 and layer 2 screenshots for each recorded test), documenting the original
@@ -484,3 +580,137 @@ runs.
 This project is licensed under the MIT License. See the
 [`LICENSE`](LICENSE) file at the repository root for the full text.
 Citation metadata is provided in [`CITATION.cff`](CITATION.cff).
+
+## Appendix: full `list --disagree` output
+
+Full output of `uv run python src/main.py list --disagree` against the
+committed `signed_files.db`, referenced by the excerpts in Experiments
+above. All 116 rows where at least one verifier's recorded result
+disagrees with the expected validity, across all six verifiers.
+
+```
+                                                              Tests                                                              
+┏━━━━━┳━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━┓
+┃ id  ┃ attack       ┃ mdp  ┃ cert ┃ prot ┃ stamp ┃ chgpg ┃ expected ┃ adobe ┃ foxit ┃ pyhanko ┃ dss ┃ master_pdf_editor ┃ edge ┃
+┡━━━━━╇━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━┩
+│ 1   │ ASA          │ None │ F    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 2   │ SFDA         │ None │ F    │ T    │ T     │ T     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 3   │ ASA          │ None │ F    │ T    │ T     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 4   │ SFDA         │ None │ F    │ T    │ T     │ F     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 5   │ ASA          │ None │ F    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 6   │ SFDA         │ None │ F    │ T    │ F     │ T     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 7   │ ASA          │ None │ F    │ T    │ F     │ F     │ invalid  │ WW    │ FF    │ F-      │ T-  │ TT                │ TF   │
+│ 8   │ SFDA         │ None │ F    │ T    │ F     │ F     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 9   │ ASA          │ None │ F    │ F    │ T     │ T     │ invalid  │ FF    │ WW    │ F-      │ F-  │ TT                │ TT   │
+│ 10  │ SFDA         │ None │ F    │ F    │ T     │ T     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 11  │ ASA          │ None │ F    │ F    │ T     │ F     │ invalid  │ WW    │ WW    │ F-      │ F-  │ TT                │ TT   │
+│ 12  │ SFDA         │ None │ F    │ F    │ T     │ F     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 13  │ ASA          │ None │ F    │ F    │ F     │ T     │ invalid  │ FF    │ WW    │ F-      │ F-  │ TT                │ TT   │
+│ 14  │ SFDA         │ None │ F    │ F    │ F     │ T     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 15  │ ASA          │ None │ F    │ F    │ F     │ F     │ invalid  │ WW    │ WW    │ F-      │ T-  │ TT                │ TT   │
+│ 16  │ SFDA         │ None │ F    │ F    │ F     │ F     │ invalid  │ TT    │ FF    │ T-      │ F-  │ TT                │ TT   │
+│ 17  │ ASA          │ 1    │ T    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 18  │ SFDA         │ 1    │ T    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 19  │ ASA          │ 1    │ T    │ T    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 20  │ SFDA         │ 1    │ T    │ T    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 21  │ ASA          │ 1    │ T    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 22  │ SFDA         │ 1    │ T    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 23  │ ASA          │ 1    │ T    │ T    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 24  │ SFDA         │ 1    │ T    │ T    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 25  │ ASA          │ 1    │ T    │ F    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 26  │ SFDA         │ 1    │ T    │ F    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 27  │ ASA          │ 1    │ T    │ F    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 28  │ SFDA         │ 1    │ T    │ F    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 29  │ ASA          │ 1    │ T    │ F    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 30  │ SFDA         │ 1    │ T    │ F    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 31  │ ASA          │ 1    │ T    │ F    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 32  │ SFDA         │ 1    │ T    │ F    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 33  │ ASA          │ 1    │ F    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 34  │ SFDA         │ 1    │ F    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 35  │ ASA          │ 1    │ F    │ T    │ T     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 36  │ SFDA         │ 1    │ F    │ T    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 37  │ ASA          │ 1    │ F    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 38  │ SFDA         │ 1    │ F    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 39  │ ASA          │ 1    │ F    │ T    │ F     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 40  │ SFDA         │ 1    │ F    │ T    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 41  │ ASA          │ 1    │ F    │ F    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 42  │ SFDA         │ 1    │ F    │ F    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 43  │ ASA          │ 1    │ F    │ F    │ T     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 44  │ SFDA         │ 1    │ F    │ F    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 45  │ ASA          │ 1    │ F    │ F    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 46  │ SFDA         │ 1    │ F    │ F    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 47  │ ASA          │ 1    │ F    │ F    │ F     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 48  │ SFDA         │ 1    │ F    │ F    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 49  │ ASA          │ 2    │ T    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 50  │ SFDA         │ 2    │ T    │ T    │ T     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 51  │ ASA          │ 2    │ T    │ T    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 52  │ SFDA         │ 2    │ T    │ T    │ T     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 53  │ ASA          │ 2    │ T    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 54  │ SFDA         │ 2    │ T    │ T    │ F     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 55  │ ASA          │ 2    │ T    │ T    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ T-  │ TT                │ TF   │
+│ 56  │ SFDA         │ 2    │ T    │ T    │ F     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 57  │ ASA          │ 2    │ T    │ F    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 58  │ SFDA         │ 2    │ T    │ F    │ T     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 59  │ ASA          │ 2    │ T    │ F    │ T     │ F     │ invalid  │ FF    │ TW    │ F-      │ F-  │ TT                │ TT   │
+│ 60  │ SFDA         │ 2    │ T    │ F    │ T     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 61  │ ASA          │ 2    │ T    │ F    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 62  │ SFDA         │ 2    │ T    │ F    │ F     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 63  │ ASA          │ 2    │ T    │ F    │ F     │ F     │ invalid  │ FF    │ TW    │ F-      │ T-  │ TT                │ TT   │
+│ 64  │ SFDA         │ 2    │ T    │ F    │ F     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 65  │ ASA          │ 2    │ F    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 66  │ SFDA         │ 2    │ F    │ T    │ T     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 67  │ ASA          │ 2    │ F    │ T    │ T     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 68  │ SFDA         │ 2    │ F    │ T    │ T     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 69  │ ASA          │ 2    │ F    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 70  │ SFDA         │ 2    │ F    │ T    │ F     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 71  │ ASA          │ 2    │ F    │ T    │ F     │ F     │ invalid  │ WW    │ FF    │ F-      │ T-  │ TT                │ TF   │
+│ 72  │ SFDA         │ 2    │ F    │ T    │ F     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 73  │ ASA          │ 2    │ F    │ F    │ T     │ T     │ invalid  │ FF    │ WW    │ F-      │ F-  │ TT                │ TF   │
+│ 74  │ SFDA         │ 2    │ F    │ F    │ T     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 75  │ ASA          │ 2    │ F    │ F    │ T     │ F     │ invalid  │ WW    │ WW    │ F-      │ F-  │ TT                │ TT   │
+│ 76  │ SFDA         │ 2    │ F    │ F    │ T     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 77  │ ASA          │ 2    │ F    │ F    │ F     │ T     │ invalid  │ FF    │ WW    │ F-      │ F-  │ TT                │ TF   │
+│ 78  │ SFDA         │ 2    │ F    │ F    │ F     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 79  │ ASA          │ 2    │ F    │ F    │ F     │ F     │ invalid  │ WW    │ WW    │ F-      │ T-  │ TT                │ TT   │
+│ 80  │ SFDA         │ 2    │ F    │ F    │ F     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 81  │ ASA          │ 3    │ T    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 82  │ SFDA         │ 3    │ T    │ T    │ T     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 83  │ ASA          │ 3    │ T    │ T    │ T     │ F     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 84  │ SFDA         │ 3    │ T    │ T    │ T     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 85  │ ASA          │ 3    │ T    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 86  │ SFDA         │ 3    │ T    │ T    │ F     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 87  │ ASA          │ 3    │ T    │ T    │ F     │ F     │ invalid  │ FF    │ FF    │ F-      │ T-  │ TT                │ TF   │
+│ 88  │ SFDA         │ 3    │ T    │ T    │ F     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 89  │ ASA          │ 3    │ T    │ F    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 90  │ SFDA         │ 3    │ T    │ F    │ T     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 91  │ ASA          │ 3    │ T    │ F    │ T     │ F     │ invalid  │ FF    │ TW    │ F-      │ F-  │ TT                │ TT   │
+│ 92  │ SFDA         │ 3    │ T    │ F    │ T     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 93  │ ASA          │ 3    │ T    │ F    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 94  │ SFDA         │ 3    │ T    │ F    │ F     │ T     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 95  │ ASA          │ 3    │ T    │ F    │ F     │ F     │ invalid  │ FF    │ TW    │ F-      │ T-  │ TT                │ TT   │
+│ 96  │ SFDA         │ 3    │ T    │ F    │ F     │ F     │ invalid  │ TT    │ TF    │ F-      │ F-  │ TT                │ TT   │
+│ 97  │ ASA          │ 3    │ F    │ T    │ T     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 98  │ SFDA         │ 3    │ F    │ T    │ T     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 99  │ ASA          │ 3    │ F    │ T    │ T     │ F     │ invalid  │ WW    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 100 │ SFDA         │ 3    │ F    │ T    │ T     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 101 │ ASA          │ 3    │ F    │ T    │ F     │ T     │ invalid  │ FF    │ FF    │ F-      │ F-  │ TT                │ TF   │
+│ 102 │ SFDA         │ 3    │ F    │ T    │ F     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 103 │ ASA          │ 3    │ F    │ T    │ F     │ F     │ invalid  │ WW    │ FF    │ F-      │ T-  │ TT                │ TF   │
+│ 104 │ SFDA         │ 3    │ F    │ T    │ F     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 105 │ ASA          │ 3    │ F    │ F    │ T     │ T     │ invalid  │ FF    │ WW    │ F-      │ F-  │ TT                │ TF   │
+│ 106 │ SFDA         │ 3    │ F    │ F    │ T     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 107 │ ASA          │ 3    │ F    │ F    │ T     │ F     │ invalid  │ WW    │ WW    │ F-      │ F-  │ TT                │ TT   │
+│ 108 │ SFDA         │ 3    │ F    │ F    │ T     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 109 │ ASA          │ 3    │ F    │ F    │ F     │ T     │ invalid  │ FF    │ WW    │ F-      │ F-  │ TT                │ TF   │
+│ 110 │ SFDA         │ 3    │ F    │ F    │ F     │ T     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 111 │ ASA          │ 3    │ F    │ F    │ F     │ F     │ invalid  │ WW    │ WW    │ F-      │ T-  │ TT                │ TT   │
+│ 112 │ SFDA         │ 3    │ F    │ F    │ F     │ F     │ invalid  │ TT    │ FF    │ F-      │ F-  │ TT                │ TT   │
+│ 113 │ EXTRA_P1     │ 1    │ T    │ F    │ F     │ F     │ invalid  │ FF    │ --    │ F-      │ F-  │ TT                │ TF   │
+│ 115 │ EXTRA_P3     │ 3    │ T    │ F    │ F     │ F     │ valid    │ TW    │ --    │ F-      │ T-  │ TT                │ TT   │
+│ 117 │ SMOKE_TEST_2 │ None │ F    │ F    │ F     │ F     │ invalid  │ FF    │ --    │ F-      │ F-  │ TT                │ TT   │
+│ 118 │ SMOKE_TEST_3 │ 3    │ T    │ F    │ F     │ F     │ valid    │ TW    │ --    │ F-      │ T-  │ TT                │ TT   │
+└─────┴──────────────┴──────┴──────┴──────┴───────┴───────┴──────────┴───────┴───────┴─────────┴─────┴───────────────────┴──────┘
+```
+
+Same legend as the Experiments section above: `T` valid/no warning, `W`
+valid/warning, `F` invalid, `-` not applicable or no result recorded.
