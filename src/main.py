@@ -36,6 +36,7 @@ app = typer.Typer(
         "  uv run python src/main.py list\n\n"
         "  uv run python src/main.py list --verifier adobe --disagree\n\n"
         "  uv run python src/main.py db export 42 --out /tmp/test.pdf\n\n"
+        "  uv run python src/main.py detect examples/yatch-signed.pdf examples/yatch-asa.pdf\n\n"
         "  uv run python src/main.py --db-path /tmp/x.db generate"
     ),
 )
@@ -114,8 +115,9 @@ def setup(
     ctx.ensure_object(dict)
     ctx.obj["db_path"] = db_path
 
-    # VM lifecycle commands do not need to open the research database.
-    if ctx.invoked_subcommand != "vm":
+    # VM lifecycle and the standalone detector do not need to open the
+    # research database.
+    if ctx.invoked_subcommand not in ("vm", "detect"):
         from modification_pipeline.model import init
 
         init(db_path)
@@ -300,6 +302,29 @@ def run(
         for target, error in failures:
             console.print(f"  [bold]{target}:[/] {error}")
         raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Detector command
+# ---------------------------------------------------------------------------
+
+
+@app.command(rich_help_panel="Detector")
+def detect(
+    files: List[Path] = typer.Argument(
+        ..., help="One or more PDF files to check for ASA/SFDA tampering."
+    ),
+) -> None:
+    """Detect ASA and SFDA signature-field attacks in one or more PDFs.
+
+    Wraps [cyan]detect_attacks.py[/], reporting affected fields and
+    offending objects per file. Exits 1 if any file is flagged.
+    """
+    from detect_attacks import main as detect_main
+
+    code = detect_main([str(f) for f in files])
+    if code:
+        raise typer.Exit(code)
 
 
 # ---------------------------------------------------------------------------

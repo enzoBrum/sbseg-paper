@@ -8,6 +8,8 @@ Reports affected fields and offending objects for each attack found.
   revision than the dict.
 
 Usage: uv run python src/detect_attacks.py <file.pdf> [<file.pdf> ...]
+
+Also runnable as: uv run python src/main.py detect <file.pdf> [<file.pdf> ...]
 """
 
 import sys

@@ -12,7 +12,7 @@ from modification_pipeline.model import ModificationTest, VerifierTest
 
 SRC_ROOT = Path(__file__).parent.parent.parent
 SCREENSHOTS_ROOT = SRC_ROOT / "screenshots"
-PAGE_SIZE = 32
+PAGE_SIZE = 1
 RETRIES = 10
 
 _EVAL_MISS_RETRIES = 2
